@@ -34,9 +34,9 @@ PHOTO_PADDING = 34
 QR_PADDING = 18
 
 # ---- NEW: text sizes kaafi bade kar diye gaye ----
-NAME_FONT_SIZE = 64
-LABEL_FONT_SIZE = 46
-FARMER_ID_FONT_SIZE = 56
+NAME_FONT_SIZE = 500
+LABEL_FONT_SIZE = 350
+FARMER_ID_FONT_SIZE = 300
 
 FONT_REGULAR_PATH = "fonts/Poppins-Regular.ttf"
 FONT_BOLD_PATH = "fonts/Poppins-Bold.ttf"
