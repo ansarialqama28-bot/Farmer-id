@@ -14,7 +14,7 @@ CORS(app)  # Blogger se cross-origin request allow karne ke liye
 # ============================================================
 # CONFIG — apni values yahan daalo
 # ============================================================
-FRONT_CARD_TEMPLATE_URL = "front card link here"   # Image4 (clean template) ka direct link
+FRONT_CARD_TEMPLATE_URL = "https://i.ibb.co/nFLxh2F/IMG-20260721-WA0005.jpg"   # Image4 (clean template) ka direct link
 AGRISTACK_URL = "https://www.upfr.agristack.gov.in/farmer-registry-up/"
 
 # Template ka reference size (jis image par coordinates measure kiye gaye hain)
