@@ -57,14 +57,17 @@ BACK_TEMPLATE_W, BACK_TEMPLATE_H = 1537, 1023
 
 BACK_CONTENT_BOX = (70, 110, 1467, 913)
 
+# ---- NEW: Address ke liye alag left padding, taaki border se door rahe (table isse touch nahi hota) ----
+ADDRESS_LEFT_PADDING = 60
+
 ADDRESS_ROW_HEIGHT = 90
 ADDRESS_FONT_SIZE = 42
 
 TABLE_TOP_GAP = 30
 
-# ---- NEW: table text ab bada — table zyada wide ho gaya hai, isliye font bhi bada ho sakta hai ----
-MIN_TABLE_FONT = 20
-MAX_TABLE_FONT = 34
+# ---- NEW: table text thoda chhota — overlap fix karne ke liye ----
+MIN_TABLE_FONT = 17
+MAX_TABLE_FONT = 27
 ROW_PADDING_RATIO = 1.9
 
 
@@ -543,12 +546,15 @@ def generate_card_back():
 
     draw = ImageDraw.Draw(template)
 
-    address_row = (cx0, cy0, cx1, cy0 + int(ADDRESS_ROW_HEIGHT * scale_y))
+    # ---- Address: table se alag, apna khud ka left-padding use karta hai ----
+    address_x0 = cx0 + int(ADDRESS_LEFT_PADDING * scale_x)
+    address_row = (address_x0, cy0, cx1, cy0 + int(ADDRESS_ROW_HEIGHT * scale_y))
     draw_label_value(
         draw, address_row, "Address  :", data["address"],
         label_size=int(ADDRESS_FONT_SIZE * scale_y)
     )
 
+    # ---- Table: bilkul waisa hi, border ke paas hi rahega ----
     table_top = cy0 + int((ADDRESS_ROW_HEIGHT + TABLE_TOP_GAP) * scale_y)
     table_box = (cx0, table_top, cx1, cy1)
     draw_land_table(draw, table_box, data["land_rows"])
