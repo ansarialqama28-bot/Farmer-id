@@ -4,6 +4,7 @@ import io
 import requests
 import qrcode
 import pdfplumber
+from datetime import datetime
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from PIL import Image, ImageDraw, ImageFont
@@ -23,24 +24,27 @@ PHOTO_BOX      = (141, 274, 483, 709)
 QR_BOX         = (1166, 459, 1347, 717)
 FARMER_ID_BOX  = (518, 747, 1038, 897)
 
-# ---- Text content zone (Name/DOB/Gender/Caste/Mobile isi patti mein) ----
 CONTENT_X0 = 523
 CONTENT_X1 = 1140
-CONTENT_TOP = 255       # logo ke turant neeche se
-CONTENT_BOTTOM = 745    # Farmer ID box shuru hone se just pehle tak
 
-# ---- Photo: upar ki taraf zyada badhao, neeche thoda sa ----
+# ---- NEW: Name ko neeche shift karne aur rows ke beech gap kam karne ke liye ----
+NAME_ROW_TOP = 290       # pehle 255 tha — ab thoda neeche se shuru
+NAME_ROW_HEIGHT = 85
+ROW_GAP = 6              # rows ke beech tight gap
+LABEL_ROW_HEIGHT = 80    # DOB/Gender/Caste/Mobile — pehle ~98 tha, ab tight
+
+# ---- Photo padding (jaisa aapne set kiya tha, waisa hi rakha) ----
 PHOTO_PADDING_LEFT = 18
 PHOTO_PADDING_RIGHT = 18
-PHOTO_PADDING_TOP = 37     # bahut kam — photo upar tak badhega
-PHOTO_PADDING_BOTTOM = 20  # thoda kam — neeche bhi thoda badhega
+PHOTO_PADDING_TOP = 37
+PHOTO_PADDING_BOTTOM = 20
 
-# ---- QR: aur bada + right shift ----
-QR_PADDING = 2
-QR_SHIFT_X = 26   # right ki taraf shift
+# ---- QR: bahut thoda aur bada (padding aur kam kar diya) ----
+QR_PADDING = -6   # negative = box thoda aur bada, isliye QR bhi bada
+QR_SHIFT_X = 26
 QR_SHIFT_Y = 0
 
-# ---- Text sizes — available row-height ke hisab se max practical size ----
+# ---- Font sizes — bilkul same rakhe hain, kahin nahi badle ----
 NAME_FONT_SIZE = 55
 LABEL_FONT_SIZE = 35
 FARMER_ID_FONT_SIZE = 60
@@ -54,8 +58,6 @@ def get_font(bold, size):
     try:
         return ImageFont.truetype(path, size)
     except Exception:
-        # FIX: pehle yahan load_default() bina size ke tha, jo size ignore kar deta tha.
-        # Ab size=size diya hai taaki fallback font bhi sahi size mein bade.
         try:
             return ImageFont.load_default(size=size)
         except Exception:
@@ -65,6 +67,29 @@ def get_font(bold, size):
 # ============================================================
 # PDF SE DATA NIKALNA
 # ============================================================
+def format_dob(dob_str):
+    """dd/mm/yy -> dd/mm/yyyy (2-digit year ko sahi 4-digit year mein convert karta hai)."""
+    if not dob_str:
+        return dob_str
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})$", dob_str.strip())
+    if not m:
+        return dob_str  # format expected se alag hai to as-is chhod do
+
+    day, month, year = m.group(1), m.group(2), m.group(3)
+    day = day.zfill(2)
+    month = month.zfill(2)
+
+    if len(year) == 2:
+        yy = int(year)
+        current_yy = int(str(datetime.now().year)[-2:])
+        # Agar 2-digit year current year ke 2-digit se bada hai -> purani sadi (19xx)
+        # warna current sadi (20xx)
+        century = 1900 if yy > current_yy else 2000
+        year = str(century + yy)
+
+    return f"{day}/{month}/{year}"
+
+
 def extract_farmer_data(pdf_bytes):
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         page = pdf.pages[0]
@@ -79,6 +104,8 @@ def extract_farmer_data(pdf_bytes):
         gender = find(r"Gender\s+(Male|Female|Transgender)")
         caste = find(r"Caste Category\s+([A-Za-z]+)")
         mobile = find(r"Mobile Number\s+(\d{6,15})")
+
+        dob = format_dob(dob)
 
         photo_img = None
         if page.images:
@@ -172,14 +199,22 @@ def make_qr(data_url, size):
 
 
 def build_content_rows():
-    total_h = CONTENT_BOTTOM - CONTENT_TOP
-    row_h = total_h // 5
-    rows = []
-    for i in range(5):
-        y0 = CONTENT_TOP + i * row_h
-        y1 = y0 + row_h
-        rows.append((CONTENT_X0, y0, CONTENT_X1, y1))
-    return rows
+    """Name row neeche shift, aur baaki 4 rows tight gap ke saath ek ke baad ek."""
+    name_row = (CONTENT_X0, NAME_ROW_TOP, CONTENT_X1, NAME_ROW_TOP + NAME_ROW_HEIGHT)
+
+    dob_top = NAME_ROW_TOP + NAME_ROW_HEIGHT + ROW_GAP
+    dob_row = (CONTENT_X0, dob_top, CONTENT_X1, dob_top + LABEL_ROW_HEIGHT)
+
+    gender_top = dob_top + LABEL_ROW_HEIGHT + ROW_GAP
+    gender_row = (CONTENT_X0, gender_top, CONTENT_X1, gender_top + LABEL_ROW_HEIGHT)
+
+    caste_top = gender_top + LABEL_ROW_HEIGHT + ROW_GAP
+    caste_row = (CONTENT_X0, caste_top, CONTENT_X1, caste_top + LABEL_ROW_HEIGHT)
+
+    mobile_top = caste_top + LABEL_ROW_HEIGHT + ROW_GAP
+    mobile_row = (CONTENT_X0, mobile_top, CONTENT_X1, mobile_top + LABEL_ROW_HEIGHT)
+
+    return name_row, dob_row, gender_row, caste_row, mobile_row
 
 
 # ============================================================
@@ -250,8 +285,9 @@ def generate_card():
     draw_label_value(draw, caste_row, "Caste  :", data["caste"], label_size=label_size)
     draw_label_value(draw, mobile_row, "Phone Number  :", data["mobile"], label_size=label_size)
 
+    # ---- Farmer ID: ab sirf number, "Farmer ID :" label hata diya, font size same rakha ----
     id_font_size = int(FARMER_ID_FONT_SIZE * scale_y)
-    draw_centered_text(draw, farmer_id_box, f"Farmer ID : {farmer_id}", size=id_font_size, bold=True)
+    draw_centered_text(draw, farmer_id_box, farmer_id, size=id_font_size, bold=True)
 
     qbw, qbh = qr_box[2] - qr_box[0], qr_box[3] - qr_box[1]
     qr_size = min(qbw, qbh)
