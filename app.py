@@ -41,7 +41,7 @@ PHOTO_PADDING_BOTTOM = 20
 
 # ---- QR: bahut thoda aur bada (padding aur kam kar diya) ----
 QR_PADDING = -7   # negative = box thoda aur bada, isliye QR bhi bada
-QR_SHIFT_X = 26
+QR_SHIFT_X = 27
 QR_SHIFT_Y = 0
 
 # ---- Font sizes — bilkul same rakhe hain, kahin nahi badle ----
