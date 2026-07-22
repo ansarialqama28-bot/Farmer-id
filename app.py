@@ -51,19 +51,20 @@ FONT_BOLD_PATH = "Poppins-Bold.ttf"
 # ============================================================
 # CONFIG — BACK CARD
 # ============================================================
-BACK_CARD_TEMPLATE_URL = "https://i.ibb.co/Q7VQkx3P/Chat-GPT-Image-Jul-21-2026-02-28-42-PM.png"
+BACK_CARD_TEMPLATE_URL = "https://i.ibb.co/6JTn2zHb/IMG-20260721-WA0003.jpg"
 
 BACK_TEMPLATE_W, BACK_TEMPLATE_H = 1537, 1023
 
-BACK_CONTENT_BOX = (130, 110, 1407, 913)
+BACK_CONTENT_BOX = (70, 110, 1467, 913)
 
 ADDRESS_ROW_HEIGHT = 90
 ADDRESS_FONT_SIZE = 42
 
 TABLE_TOP_GAP = 30
 
-MIN_TABLE_FONT = 14
-MAX_TABLE_FONT = 22
+# ---- NEW: table text ab bada — table zyada wide ho gaya hai, isliye font bhi bada ho sakta hai ----
+MIN_TABLE_FONT = 20
+MAX_TABLE_FONT = 34
 ROW_PADDING_RATIO = 1.9
 
 
@@ -157,7 +158,6 @@ def extract_english_name(pdf_bytes):
 
 
 def get_first_name(full_name):
-    """Sirf pehla word (first name) return karta hai — surname/middle name nahi."""
     if not full_name or full_name == "N/A":
         return "N/A"
     return full_name.strip().split()[0]
@@ -230,7 +230,6 @@ def extract_back_data(pdf_bytes):
     address = "N/A"
     land_rows = []
 
-    # Owner Name ke liye Hindi PDF text ki jagah English name use karenge (sirf first name)
     english_name = extract_english_name(pdf_bytes)
     owner_first_name = get_first_name(english_name)
 
@@ -261,7 +260,6 @@ def extract_back_data(pdf_bytes):
                     s_no_match = re.match(r"(\d+)", s_no_raw)
                     s_no = s_no_match.group(1) if s_no_match else s_no_raw
 
-                    # ---- FIX: ab Hindi owner name nahi, English first name print hoga ----
                     owner = owner_first_name
 
                     total_area = clean_nospace(row[10])
@@ -374,7 +372,7 @@ def build_content_rows():
 
 
 # ============================================================
-# TABLE DRAWING (back card) — ab poora table English mein hai, Hindi font ki zaroorat nahi
+# TABLE DRAWING (back card)
 # ============================================================
 def draw_land_table(draw, table_box, land_rows):
     x0, y0, x1, y1 = table_box
