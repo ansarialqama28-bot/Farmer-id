@@ -26,24 +26,24 @@ FARMER_ID_BOX  = (518, 747, 1038, 897)
 # ---- Text content zone (Name/DOB/Gender/Caste/Mobile isi patti mein) ----
 CONTENT_X0 = 523
 CONTENT_X1 = 1140
-CONTENT_TOP = 270
-CONTENT_BOTTOM = 730
+CONTENT_TOP = 255       # logo ke turant neeche se
+CONTENT_BOTTOM = 745    # Farmer ID box shuru hone se just pehle tak
 
-# ---- NEW: Photo — har side ka alag padding (neeche shift + dono side chauda) ----
+# ---- Photo: upar ki taraf zyada badhao, neeche thoda sa ----
 PHOTO_PADDING_LEFT = 18
 PHOTO_PADDING_RIGHT = 18
-PHOTO_PADDING_TOP = 58     # zyada — photo neeche se shuru hoga (shift down)
-PHOTO_PADDING_BOTTOM = 22  # kam — box neeche tak zyada jayega
+PHOTO_PADDING_TOP = 10     # bahut kam — photo upar tak badhega
+PHOTO_PADDING_BOTTOM = 12  # thoda kam — neeche bhi thoda badhega
 
-# ---- NEW: QR — bada aur thoda right shift ----
-QR_PADDING = 8
-QR_SHIFT_X = 14   # right ki taraf shift (px, reference resolution ke hisab se)
+# ---- QR: aur bada + right shift ----
+QR_PADDING = 2
+QR_SHIFT_X = 26   # right ki taraf shift
 QR_SHIFT_Y = 0
 
-# ---- NEW: Text sizes kaafi bade kar diye ----
+# ---- Text sizes — available row-height ke hisab se max practical size ----
 NAME_FONT_SIZE = 95
-LABEL_FONT_SIZE = 88
-FARMER_ID_FONT_SIZE = 84
+LABEL_FONT_SIZE = 90
+FARMER_ID_FONT_SIZE = 80
 
 FONT_REGULAR_PATH = "fonts/Poppins-Regular.ttf"
 FONT_BOLD_PATH = "fonts/Poppins-Bold.ttf"
@@ -54,7 +54,12 @@ def get_font(bold, size):
     try:
         return ImageFont.truetype(path, size)
     except Exception:
-        return ImageFont.load_default()
+        # FIX: pehle yahan load_default() bina size ke tha, jo size ignore kar deta tha.
+        # Ab size=size diya hai taaki fallback font bhi sahi size mein bade.
+        try:
+            return ImageFont.load_default(size=size)
+        except Exception:
+            return ImageFont.load_default()
 
 
 # ============================================================
@@ -99,7 +104,6 @@ def extract_farmer_data(pdf_bytes):
 # IMAGE HELPERS
 # ============================================================
 def shrink_box_asym(box, left, top, right, bottom):
-    """Box ko har side se alag-alag padding se shrink karta hai."""
     x0, y0, x1, y1 = box
     return (x0 + left, y0 + top, x1 - right, y1 - bottom)
 
@@ -131,7 +135,7 @@ def draw_left_text(draw, box, text, size, bold=False, fill="#1A2238"):
     draw.text((x0, ty), text, font=font, fill=fill)
 
 
-def draw_label_value(draw, box, label, value, label_size=88, value_gap=16):
+def draw_label_value(draw, box, label, value, label_size=90, value_gap=16):
     x0, y0, x1, y1 = box
     box_h = y1 - y0
 
@@ -218,7 +222,6 @@ def generate_card():
     qr_box = scale_box(QR_BOX)
     farmer_id_box = scale_box(FARMER_ID_BOX)
 
-    # ---- Photo: asymmetric padding (neeche shift + dono side chauda) ----
     photo_box = shrink_box_asym(
         photo_box,
         left=int(PHOTO_PADDING_LEFT * scale_x),
@@ -227,36 +230,29 @@ def generate_card():
         bottom=int(PHOTO_PADDING_BOTTOM * scale_y),
     )
 
-    # ---- QR: chhota padding (bada QR) ----
     qr_padding_scaled = int(QR_PADDING * scale_x)
     qr_box = shrink_box_asym(qr_box, qr_padding_scaled, qr_padding_scaled, qr_padding_scaled, qr_padding_scaled)
 
-    # ---- Content rows (Name, DOB, Gender, Caste, Mobile) ----
     name_row, dob_row, gender_row, caste_row, mobile_row = [scale_box(r) for r in build_content_rows()]
 
-    # ---- Photo paste karo ----
     pw, ph = photo_box[2] - photo_box[0], photo_box[3] - photo_box[1]
     fitted_photo = cover_fit(data["photo"], pw, ph)
     template.paste(fitted_photo, (photo_box[0], photo_box[1]))
 
     draw = ImageDraw.Draw(template)
 
-    # ---- Name ----
     name_font_size = int(NAME_FONT_SIZE * scale_y)
     draw_left_text(draw, name_row, data["name"], size=name_font_size, bold=False)
 
-    # ---- DOB / Gender / Caste / Mobile ----
     label_size = int(LABEL_FONT_SIZE * scale_y)
     draw_label_value(draw, dob_row, "Date Of Birth  :", data["dob"], label_size=label_size)
     draw_label_value(draw, gender_row, "Gender  :", data["gender"], label_size=label_size)
     draw_label_value(draw, caste_row, "Caste  :", data["caste"], label_size=label_size)
     draw_label_value(draw, mobile_row, "Phone Number  :", data["mobile"], label_size=label_size)
 
-    # ---- Farmer ID ----
     id_font_size = int(FARMER_ID_FONT_SIZE * scale_y)
     draw_centered_text(draw, farmer_id_box, f"Farmer ID : {farmer_id}", size=id_font_size, bold=True)
 
-    # ---- QR Code (bada + thoda right shift) ----
     qbw, qbh = qr_box[2] - qr_box[0], qr_box[3] - qr_box[1]
     qr_size = min(qbw, qbh)
     qr_img = make_qr(AGRISTACK_URL, qr_size)
