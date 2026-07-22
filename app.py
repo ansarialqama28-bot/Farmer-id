@@ -28,10 +28,10 @@ CONTENT_X0 = 523
 CONTENT_X1 = 1140
 
 # ---- NEW: Name ko neeche shift karne aur rows ke beech gap kam karne ke liye ----
-NAME_ROW_TOP = 290       # pehle 255 tha — ab thoda neeche se shuru
+NAME_ROW_TOP = 300       # pehle 255 tha — ab thoda neeche se shuru
 NAME_ROW_HEIGHT = 85
-ROW_GAP = 6              # rows ke beech tight gap
-LABEL_ROW_HEIGHT = 80    # DOB/Gender/Caste/Mobile — pehle ~98 tha, ab tight
+ROW_GAP = 5              # rows ke beech tight gap
+LABEL_ROW_HEIGHT = 75    # DOB/Gender/Caste/Mobile — pehle ~98 tha, ab tight
 
 # ---- Photo padding (jaisa aapne set kiya tha, waisa hi rakha) ----
 PHOTO_PADDING_LEFT = 18
@@ -40,14 +40,14 @@ PHOTO_PADDING_TOP = 37
 PHOTO_PADDING_BOTTOM = 20
 
 # ---- QR: bahut thoda aur bada (padding aur kam kar diya) ----
-QR_PADDING = -6   # negative = box thoda aur bada, isliye QR bhi bada
+QR_PADDING = -7   # negative = box thoda aur bada, isliye QR bhi bada
 QR_SHIFT_X = 26
 QR_SHIFT_Y = 0
 
 # ---- Font sizes — bilkul same rakhe hain, kahin nahi badle ----
 NAME_FONT_SIZE = 55
-LABEL_FONT_SIZE = 35
-FARMER_ID_FONT_SIZE = 60
+LABEL_FONT_SIZE = 37
+FARMER_ID_FONT_SIZE = 63
 
 FONT_REGULAR_PATH = "Poppins-Regular.ttf"
 FONT_BOLD_PATH = "Poppins-Bold.ttf"
