@@ -23,20 +23,27 @@ PHOTO_BOX      = (141, 274, 483, 709)
 QR_BOX         = (1166, 459, 1347, 717)
 FARMER_ID_BOX  = (518, 747, 1038, 897)
 
-# ---- NEW: text content zone (DOB/Gender/Caste/Mobile/Name sab isi vertical patti mein aayenge) ----
-CONTENT_X0 = 523      # left se shuru (photo box khatam hote hi)
-CONTENT_X1 = 1120     # right (QR box shuru hone se pehle tak)
-CONTENT_TOP = 280      # "Agri Stack" logo ke neeche se
-CONTENT_BOTTOM = 700   # Farmer ID box shuru hone se pehle tak
+# ---- Text content zone (Name/DOB/Gender/Caste/Mobile isi patti mein) ----
+CONTENT_X0 = 523
+CONTENT_X1 = 1140
+CONTENT_TOP = 270
+CONTENT_BOTTOM = 730
 
-# ---- NEW: photo/QR ko box ke andar aur chhota rakhne ke liye padding ----
-PHOTO_PADDING = 34
-QR_PADDING = 18
+# ---- NEW: Photo — har side ka alag padding (neeche shift + dono side chauda) ----
+PHOTO_PADDING_LEFT = 18
+PHOTO_PADDING_RIGHT = 18
+PHOTO_PADDING_TOP = 58     # zyada — photo neeche se shuru hoga (shift down)
+PHOTO_PADDING_BOTTOM = 22  # kam — box neeche tak zyada jayega
 
-# ---- NEW: text sizes kaafi bade kar diye gaye ----
-NAME_FONT_SIZE = 500
-LABEL_FONT_SIZE = 350
-FARMER_ID_FONT_SIZE = 300
+# ---- NEW: QR — bada aur thoda right shift ----
+QR_PADDING = 8
+QR_SHIFT_X = 14   # right ki taraf shift (px, reference resolution ke hisab se)
+QR_SHIFT_Y = 0
+
+# ---- NEW: Text sizes kaafi bade kar diye ----
+NAME_FONT_SIZE = 95
+LABEL_FONT_SIZE = 88
+FARMER_ID_FONT_SIZE = 84
 
 FONT_REGULAR_PATH = "fonts/Poppins-Regular.ttf"
 FONT_BOLD_PATH = "fonts/Poppins-Bold.ttf"
@@ -91,9 +98,10 @@ def extract_farmer_data(pdf_bytes):
 # ============================================================
 # IMAGE HELPERS
 # ============================================================
-def shrink_box(box, padding):
+def shrink_box_asym(box, left, top, right, bottom):
+    """Box ko har side se alag-alag padding se shrink karta hai."""
     x0, y0, x1, y1 = box
-    return (x0 + padding, y0 + padding, x1 - padding, y1 - padding)
+    return (x0 + left, y0 + top, x1 - right, y1 - bottom)
 
 
 def cover_fit(img, box_w, box_h):
@@ -114,7 +122,6 @@ def cover_fit(img, box_w, box_h):
 
 
 def draw_left_text(draw, box, text, size, bold=False, fill="#1A2238"):
-    """Text ko box ke bilkul left se shuru karke, vertically center mein likhta hai."""
     x0, y0, x1, y1 = box
     box_h = y1 - y0
     font = get_font(bold, size)
@@ -124,8 +131,7 @@ def draw_left_text(draw, box, text, size, bold=False, fill="#1A2238"):
     draw.text((x0, ty), text, font=font, fill=fill)
 
 
-def draw_label_value(draw, box, label, value, label_size=46, value_gap=14):
-    """Box ke andar 'Bold Label : Normal Value' style, left-aligned, vertically center."""
+def draw_label_value(draw, box, label, value, label_size=88, value_gap=16):
     x0, y0, x1, y1 = box
     box_h = y1 - y0
 
@@ -162,7 +168,6 @@ def make_qr(data_url, size):
 
 
 def build_content_rows():
-    """CONTENT zone ko 5 barabar rows mein baant deta hai — Name, DOB, Gender, Caste, Mobile."""
     total_h = CONTENT_BOTTOM - CONTENT_TOP
     row_h = total_h // 5
     rows = []
@@ -213,10 +218,18 @@ def generate_card():
     qr_box = scale_box(QR_BOX)
     farmer_id_box = scale_box(FARMER_ID_BOX)
 
-    photo_padding_scaled = int(PHOTO_PADDING * scale_x)
+    # ---- Photo: asymmetric padding (neeche shift + dono side chauda) ----
+    photo_box = shrink_box_asym(
+        photo_box,
+        left=int(PHOTO_PADDING_LEFT * scale_x),
+        top=int(PHOTO_PADDING_TOP * scale_y),
+        right=int(PHOTO_PADDING_RIGHT * scale_x),
+        bottom=int(PHOTO_PADDING_BOTTOM * scale_y),
+    )
+
+    # ---- QR: chhota padding (bada QR) ----
     qr_padding_scaled = int(QR_PADDING * scale_x)
-    photo_box = shrink_box(photo_box, photo_padding_scaled)
-    qr_box = shrink_box(qr_box, qr_padding_scaled)
+    qr_box = shrink_box_asym(qr_box, qr_padding_scaled, qr_padding_scaled, qr_padding_scaled, qr_padding_scaled)
 
     # ---- Content rows (Name, DOB, Gender, Caste, Mobile) ----
     name_row, dob_row, gender_row, caste_row, mobile_row = [scale_box(r) for r in build_content_rows()]
@@ -228,27 +241,27 @@ def generate_card():
 
     draw = ImageDraw.Draw(template)
 
-    # ---- Name (bada font, left-aligned, bold nahi) ----
+    # ---- Name ----
     name_font_size = int(NAME_FONT_SIZE * scale_y)
     draw_left_text(draw, name_row, data["name"], size=name_font_size, bold=False)
 
-    # ---- DOB / Gender / Caste / Mobile (Bold Label : Normal Value, left-aligned) ----
+    # ---- DOB / Gender / Caste / Mobile ----
     label_size = int(LABEL_FONT_SIZE * scale_y)
     draw_label_value(draw, dob_row, "Date Of Birth  :", data["dob"], label_size=label_size)
     draw_label_value(draw, gender_row, "Gender  :", data["gender"], label_size=label_size)
     draw_label_value(draw, caste_row, "Caste  :", data["caste"], label_size=label_size)
     draw_label_value(draw, mobile_row, "Phone Number  :", data["mobile"], label_size=label_size)
 
-    # ---- Farmer ID (golden box, center mein) ----
+    # ---- Farmer ID ----
     id_font_size = int(FARMER_ID_FONT_SIZE * scale_y)
     draw_centered_text(draw, farmer_id_box, f"Farmer ID : {farmer_id}", size=id_font_size, bold=True)
 
-    # ---- QR Code (box ke exact center mein) ----
+    # ---- QR Code (bada + thoda right shift) ----
     qbw, qbh = qr_box[2] - qr_box[0], qr_box[3] - qr_box[1]
     qr_size = min(qbw, qbh)
     qr_img = make_qr(AGRISTACK_URL, qr_size)
-    qx = qr_box[0] + (qbw - qr_size) // 2
-    qy = qr_box[1] + (qbh - qr_size) // 2
+    qx = qr_box[0] + (qbw - qr_size) // 2 + int(QR_SHIFT_X * scale_x)
+    qy = qr_box[1] + (qbh - qr_size) // 2 + int(QR_SHIFT_Y * scale_y)
     template.paste(qr_img, (qx, qy))
 
     output = io.BytesIO()
