@@ -51,7 +51,7 @@ FONT_BOLD_PATH = "Poppins-Bold.ttf"
 # ============================================================
 # CONFIG — BACK CARD (naya)
 # ============================================================
-BACK_CARD_TEMPLATE_URL = "back template url here"
+BACK_CARD_TEMPLATE_URL = "https://i.ibb.co/6JTn2zHb/IMG-20260721-WA0003.jpg"
 
 # Reference resolution jis par neeche ke coordinates measure kiye gaye hain
 BACK_TEMPLATE_W, BACK_TEMPLATE_H = 1537, 1023
