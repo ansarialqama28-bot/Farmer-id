@@ -13,7 +13,7 @@ app = Flask(__name__)
 CORS(app)
 
 # ============================================================
-# CONFIG — FRONT CARD (bilkul same, koi change nahi)
+# CONFIG — FRONT CARD (unchanged)
 # ============================================================
 FRONT_CARD_TEMPLATE_URL = "https://i.ibb.co/nFLxh2F/IMG-20260721-WA0005.jpg"
 AGRISTACK_URL = "https://www.upfr.agristack.gov.in/farmer-registry-up/"
@@ -62,10 +62,9 @@ ADDRESS_FONT_SIZE = 42
 
 TABLE_TOP_GAP = 30
 
-# ---- NEW: row height ab text size ke hisab se calculate hoti hai, fixed-stretch nahi ----
 MIN_TABLE_FONT = 14
 MAX_TABLE_FONT = 22
-ROW_PADDING_RATIO = 1.9   # row height = font_size * ye ratio (text ke upar-neeche thodi si breathing space)
+ROW_PADDING_RATIO = 1.9
 
 FONT_HINDI_PATH = "NotoSansDevanagari-Regular.ttf"
 
@@ -86,6 +85,80 @@ def get_hindi_font(size):
         return ImageFont.truetype(FONT_HINDI_PATH, size)
     except Exception:
         return get_font(False, size)
+
+
+# ============================================================
+# KNOWN NAME LOOKUPS — PDF wrap ki wajah se toote hue
+# State/District names ko sahi shakal mein wapas laane ke liye
+# ============================================================
+INDIAN_STATES = [
+    "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+    "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+    "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya",
+    "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim",
+    "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand",
+    "West Bengal", "Andaman and Nicobar Islands", "Chandigarh",
+    "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Jammu and Kashmir",
+    "Ladakh", "Lakshadweep", "Puducherry"
+]
+
+UP_DISTRICTS = [
+    "Agra", "Aligarh", "Ambedkar Nagar", "Amethi", "Amroha", "Auraiya",
+    "Ayodhya", "Azamgarh", "Baghpat", "Bahraich", "Ballia", "Balrampur",
+    "Banda", "Barabanki", "Bareilly", "Basti", "Bhadohi", "Bijnor",
+    "Budaun", "Bulandshahr", "Chandauli", "Chitrakoot", "Deoria", "Etah",
+    "Etawah", "Farrukhabad", "Fatehpur", "Firozabad", "Gautam Buddha Nagar",
+    "Ghaziabad", "Ghazipur", "Gonda", "Gorakhpur", "Hamirpur", "Hapur",
+    "Hardoi", "Hathras", "Jalaun", "Jaunpur", "Jhansi", "Kannauj",
+    "Kanpur Dehat", "Kanpur Nagar", "Kasganj", "Kaushambi", "Kheri",
+    "Kushinagar", "Lalitpur", "Lucknow", "Maharajganj", "Mahoba",
+    "Mainpuri", "Mathura", "Mau", "Meerut", "Mirzapur", "Moradabad",
+    "Muzaffarnagar", "Pilibhit", "Pratapgarh", "Prayagraj", "Raebareli",
+    "Rampur", "Saharanpur", "Sambhal", "Sant Kabir Nagar", "Shahjahanpur",
+    "Shamli", "Shravasti", "Siddharthnagar", "Sitapur", "Sonbhadra",
+    "Sultanpur", "Unnao", "Varanasi"
+]
+
+
+def _build_lookup(names):
+    """'Ambedkar Nagar' -> key 'AMBEDKARNAGAR' -> value 'AMBEDKAR NAGAR' (uppercase, jaisa PDF mein dikhta hai)."""
+    lookup = {}
+    for name in names:
+        key = re.sub(r"\s+", "", name).upper()
+        lookup[key] = name.upper()
+    return lookup
+
+
+STATE_LOOKUP = _build_lookup(INDIAN_STATES)
+DISTRICT_LOOKUP = _build_lookup(UP_DISTRICTS)
+
+
+def clean_nospace(value):
+    """PDF cell ke line-breaks ko bina space ke jodta hai — proper nouns/names ke liye,
+    taaki beech mein galat space na aaye (jaise 'कु न्जबिहा री' jaisa na ho)."""
+    if value is None:
+        return ""
+    v = value.replace("\n", "")
+    v = re.sub(r"\s+", " ", v).strip()
+    v = v.rstrip(",").strip()
+    return v
+
+
+def clean_and_match(value, lookup):
+    """Line-breaks hata kar known names list se match karta hai (State/District ke liye)."""
+    if value is None:
+        return ""
+    concatenated = value.replace("\n", "")
+    concatenated = re.sub(r"\s+", "", concatenated).strip().rstrip(",")
+    key = concatenated.upper()
+
+    if key in lookup:
+        return lookup[key]
+
+    # Match nahi mila — fallback: fragments ko single space se jodo (purana tareeka)
+    fallback = value.replace("\n", " ")
+    fallback = re.sub(r"\s+", " ", fallback).strip().rstrip(",").strip()
+    return fallback
 
 
 # ============================================================
@@ -151,15 +224,6 @@ def extract_farmer_data(pdf_bytes):
 # ============================================================
 # PDF SE BACK DATA NIKALNA
 # ============================================================
-def clean_cell(value):
-    if value is None:
-        return ""
-    v = value.replace("\n", " ")
-    v = re.sub(r"\s+", " ", v).strip()
-    v = v.rstrip(",").strip()
-    return v
-
-
 def extract_back_data(pdf_bytes):
     address = "N/A"
     land_rows = []
@@ -175,7 +239,7 @@ def extract_back_data(pdf_bytes):
             for table in tables:
                 if not table or len(table) < 2:
                     continue
-                header = [clean_cell(c).lower() for c in table[0] if c is not None]
+                header = [clean_nospace(c).lower() for c in table[0] if c is not None]
                 header_joined = " ".join(header)
                 if "owner" not in header_joined or "extent" not in header_joined:
                     continue
@@ -183,14 +247,20 @@ def extract_back_data(pdf_bytes):
                 for row in table[1:]:
                     if not row or len(row) < 12:
                         continue
-                    state = clean_cell(row[0])
-                    district = clean_cell(row[1])
-                    s_no_raw = clean_cell(row[4])
+
+                    # State/District: known-names lookup se sahi shakal mein wapas laate hain
+                    state = clean_and_match(row[0], STATE_LOOKUP)
+                    district = clean_and_match(row[1], DISTRICT_LOOKUP)
+
+                    s_no_raw = clean_nospace(row[4])
                     s_no_match = re.match(r"(\d+)", s_no_raw)
                     s_no = s_no_match.group(1) if s_no_match else s_no_raw
-                    owner = clean_cell(row[6])
-                    total_area = clean_cell(row[10])
-                    assigned_area = clean_cell(row[11])
+
+                    # Owner Name: bina space jodo, taaki beech mein galat space na aaye
+                    owner = clean_nospace(row[6])
+
+                    total_area = clean_nospace(row[10])
+                    assigned_area = clean_nospace(row[11])
 
                     if state and owner:
                         land_rows.append({
@@ -299,7 +369,7 @@ def build_content_rows():
 
 
 # ============================================================
-# TABLE DRAWING (back card) — ab row height text ke hisab se
+# TABLE DRAWING (back card)
 # ============================================================
 def draw_land_table(draw, table_box, land_rows):
     x0, y0, x1, y1 = table_box
@@ -314,12 +384,10 @@ def draw_land_table(draw, table_box, land_rows):
 
     n_rows = max(len(land_rows), 1)
 
-    # ---- Step 1: font size fix karo, row height text ke hisab se calculate karo ----
     font_size = MAX_TABLE_FONT
     row_h = int(font_size * ROW_PADDING_RATIO)
     required_h = (n_rows + 1) * row_h
 
-    # ---- Step 2: agar itni rows box mein fit nahi hoti, to font aur row height dono shrink karo ----
     if required_h > total_h:
         scale = total_h / required_h
         font_size = max(MIN_TABLE_FONT, int(font_size * scale))
@@ -342,7 +410,7 @@ def draw_land_table(draw, table_box, land_rows):
 
     if not land_rows:
         draw.rectangle([x0, cur_y, x1, cur_y + row_h], outline="#1A2238", width=1)
-        draw_text_in_box(draw, (x0, cur_y, x1, cur_y + row_h), "Koi land record nahi mila", font_cell)
+        draw_text_in_box(draw, (x0, cur_y, x1, cur_y + row_h), "No land record found", font_cell)
         return
 
     for row in land_rows:
@@ -363,11 +431,11 @@ def draw_land_table(draw, table_box, land_rows):
 @app.route("/generate-card", methods=["POST"])
 def generate_card():
     if "pdf" not in request.files:
-        return jsonify({"error": "PDF file zaroori hai (field name: pdf)"}), 400
+        return jsonify({"error": "PDF file is required (field name: pdf)"}), 400
 
     farmer_id = request.form.get("farmer_id", "").strip()
     if not re.fullmatch(r"\d{11}", farmer_id):
-        return jsonify({"error": "Farmer ID exactly 11 digits ki honi chahiye"}), 400
+        return jsonify({"error": "Farmer ID must be exactly 11 digits"}), 400
 
     pdf_file = request.files["pdf"]
     pdf_bytes = pdf_file.read()
@@ -375,16 +443,16 @@ def generate_card():
     try:
         data = extract_farmer_data(pdf_bytes)
     except Exception as e:
-        return jsonify({"error": f"PDF read nahi ho payi: {str(e)}"}), 500
+        return jsonify({"error": f"Could not read the PDF: {str(e)}"}), 500
 
     if data["photo"] is None:
-        return jsonify({"error": "PDF mein photo nahi mili"}), 400
+        return jsonify({"error": "No photo found in the PDF"}), 400
 
     try:
         resp = requests.get(FRONT_CARD_TEMPLATE_URL, timeout=15)
         template = Image.open(io.BytesIO(resp.content)).convert("RGB")
     except Exception as e:
-        return jsonify({"error": f"Template load nahi hua: {str(e)}"}), 500
+        return jsonify({"error": f"Could not load the template: {str(e)}"}), 500
 
     scale_x = template.width / TEMPLATE_W
     scale_y = template.height / TEMPLATE_H
@@ -447,7 +515,7 @@ def generate_card():
 @app.route("/generate-card-back", methods=["POST"])
 def generate_card_back():
     if "pdf" not in request.files:
-        return jsonify({"error": "PDF file zaroori hai (field name: pdf)"}), 400
+        return jsonify({"error": "PDF file is required (field name: pdf)"}), 400
 
     pdf_file = request.files["pdf"]
     pdf_bytes = pdf_file.read()
@@ -455,13 +523,13 @@ def generate_card_back():
     try:
         data = extract_back_data(pdf_bytes)
     except Exception as e:
-        return jsonify({"error": f"PDF read nahi ho payi: {str(e)}"}), 500
+        return jsonify({"error": f"Could not read the PDF: {str(e)}"}), 500
 
     try:
         resp = requests.get(BACK_CARD_TEMPLATE_URL, timeout=15)
         template = Image.open(io.BytesIO(resp.content)).convert("RGB")
     except Exception as e:
-        return jsonify({"error": f"Template load nahi hua: {str(e)}"}), 500
+        return jsonify({"error": f"Could not load the template: {str(e)}"}), 500
 
     scale_x = template.width / BACK_TEMPLATE_W
     scale_y = template.height / BACK_TEMPLATE_H
