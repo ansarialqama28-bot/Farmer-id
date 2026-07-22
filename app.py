@@ -61,12 +61,11 @@ ADDRESS_ROW_HEIGHT = 90
 ADDRESS_FONT_SIZE = 42
 
 TABLE_TOP_GAP = 30
-MAX_TABLE_ROW_HEIGHT = 85
 
-# ---- NEW: table text ab kaafi chhota — overlap fix karne ke liye ----
+# ---- NEW: row height ab text size ke hisab se calculate hoti hai, fixed-stretch nahi ----
 MIN_TABLE_FONT = 14
 MAX_TABLE_FONT = 22
-TABLE_FONT_RATIO = 0.24   # pehle 0.4 tha — row height ka kam fraction use hoga
+ROW_PADDING_RATIO = 1.9   # row height = font_size * ye ratio (text ke upar-neeche thodi si breathing space)
 
 FONT_HINDI_PATH = "NotoSansDevanagari-Regular.ttf"
 
@@ -300,7 +299,7 @@ def build_content_rows():
 
 
 # ============================================================
-# TABLE DRAWING (back card)
+# TABLE DRAWING (back card) — ab row height text ke hisab se
 # ============================================================
 def draw_land_table(draw, table_box, land_rows):
     x0, y0, x1, y1 = table_box
@@ -314,11 +313,17 @@ def draw_land_table(draw, table_box, land_rows):
     col_widths[-1] = total_w - sum(col_widths[:-1])
 
     n_rows = max(len(land_rows), 1)
-    row_h = min(MAX_TABLE_ROW_HEIGHT, total_h / (n_rows + 1))
 
-    # ---- FIX: chhota font, taaki State/District jaisa lamba text column ke andar hi fit ho ----
-    font_size = int(row_h * TABLE_FONT_RATIO)
-    font_size = max(MIN_TABLE_FONT, min(MAX_TABLE_FONT, font_size))
+    # ---- Step 1: font size fix karo, row height text ke hisab se calculate karo ----
+    font_size = MAX_TABLE_FONT
+    row_h = int(font_size * ROW_PADDING_RATIO)
+    required_h = (n_rows + 1) * row_h
+
+    # ---- Step 2: agar itni rows box mein fit nahi hoti, to font aur row height dono shrink karo ----
+    if required_h > total_h:
+        scale = total_h / required_h
+        font_size = max(MIN_TABLE_FONT, int(font_size * scale))
+        row_h = int(font_size * ROW_PADDING_RATIO)
 
     font_header = get_font(True, font_size)
     font_cell = get_font(False, font_size)
