@@ -66,8 +66,6 @@ MIN_TABLE_FONT = 14
 MAX_TABLE_FONT = 22
 ROW_PADDING_RATIO = 1.9
 
-FONT_HINDI_PATH = "NotoSansDevanagari-Regular.ttf"
-
 
 def get_font(bold, size):
     path = FONT_BOLD_PATH if bold else FONT_REGULAR_PATH
@@ -80,16 +78,8 @@ def get_font(bold, size):
             return ImageFont.load_default()
 
 
-def get_hindi_font(size):
-    try:
-        return ImageFont.truetype(FONT_HINDI_PATH, size)
-    except Exception:
-        return get_font(False, size)
-
-
 # ============================================================
-# KNOWN NAME LOOKUPS — PDF wrap ki wajah se toote hue
-# State/District names ko sahi shakal mein wapas laane ke liye
+# KNOWN NAME LOOKUPS — State/District ko sahi shakal mein wapas laane ke liye
 # ============================================================
 INDIAN_STATES = [
     "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -121,7 +111,6 @@ UP_DISTRICTS = [
 
 
 def _build_lookup(names):
-    """'Ambedkar Nagar' -> key 'AMBEDKARNAGAR' -> value 'AMBEDKAR NAGAR' (uppercase, jaisa PDF mein dikhta hai)."""
     lookup = {}
     for name in names:
         key = re.sub(r"\s+", "", name).upper()
@@ -134,8 +123,6 @@ DISTRICT_LOOKUP = _build_lookup(UP_DISTRICTS)
 
 
 def clean_nospace(value):
-    """PDF cell ke line-breaks ko bina space ke jodta hai — proper nouns/names ke liye,
-    taaki beech mein galat space na aaye (jaise 'कु न्जबिहा री' jaisa na ho)."""
     if value is None:
         return ""
     v = value.replace("\n", "")
@@ -145,7 +132,6 @@ def clean_nospace(value):
 
 
 def clean_and_match(value, lookup):
-    """Line-breaks hata kar known names list se match karta hai (State/District ke liye)."""
     if value is None:
         return ""
     concatenated = value.replace("\n", "")
@@ -155,10 +141,26 @@ def clean_and_match(value, lookup):
     if key in lookup:
         return lookup[key]
 
-    # Match nahi mila — fallback: fragments ko single space se jodo (purana tareeka)
     fallback = value.replace("\n", " ")
     fallback = re.sub(r"\s+", " ", fallback).strip().rstrip(",").strip()
     return fallback
+
+
+# ============================================================
+# PDF SE ENGLISH FARMER NAME NIKALNA (front aur back dono isi ko use karte hain)
+# ============================================================
+def extract_english_name(pdf_bytes):
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        text = pdf.pages[0].extract_text() or ""
+        m = re.search(r"Farmer Name as per Aadhaar in English\s+(.+?)\s+Farmer.s Name in Local Language", text)
+        return m.group(1).strip() if m else "N/A"
+
+
+def get_first_name(full_name):
+    """Sirf pehla word (first name) return karta hai — surname/middle name nahi."""
+    if not full_name or full_name == "N/A":
+        return "N/A"
+    return full_name.strip().split()[0]
 
 
 # ============================================================
@@ -228,6 +230,10 @@ def extract_back_data(pdf_bytes):
     address = "N/A"
     land_rows = []
 
+    # Owner Name ke liye Hindi PDF text ki jagah English name use karenge (sirf first name)
+    english_name = extract_english_name(pdf_bytes)
+    owner_first_name = get_first_name(english_name)
+
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         page0_text = pdf.pages[0].extract_text() or ""
         m = re.search(r"Address In English\s+(.+?)\s+Address In Local Language", page0_text)
@@ -248,7 +254,6 @@ def extract_back_data(pdf_bytes):
                     if not row or len(row) < 12:
                         continue
 
-                    # State/District: known-names lookup se sahi shakal mein wapas laate hain
                     state = clean_and_match(row[0], STATE_LOOKUP)
                     district = clean_and_match(row[1], DISTRICT_LOOKUP)
 
@@ -256,13 +261,13 @@ def extract_back_data(pdf_bytes):
                     s_no_match = re.match(r"(\d+)", s_no_raw)
                     s_no = s_no_match.group(1) if s_no_match else s_no_raw
 
-                    # Owner Name: bina space jodo, taaki beech mein galat space na aaye
-                    owner = clean_nospace(row[6])
+                    # ---- FIX: ab Hindi owner name nahi, English first name print hoga ----
+                    owner = owner_first_name
 
                     total_area = clean_nospace(row[10])
                     assigned_area = clean_nospace(row[11])
 
-                    if state and owner:
+                    if state:
                         land_rows.append({
                             "state": state,
                             "district": district,
@@ -369,7 +374,7 @@ def build_content_rows():
 
 
 # ============================================================
-# TABLE DRAWING (back card)
+# TABLE DRAWING (back card) — ab poora table English mein hai, Hindi font ki zaroorat nahi
 # ============================================================
 def draw_land_table(draw, table_box, land_rows):
     x0, y0, x1, y1 = table_box
@@ -377,7 +382,6 @@ def draw_land_table(draw, table_box, land_rows):
     total_h = y1 - y0
 
     headers = ["State", "District", "S. No.", "Owner Name", "Total Area", "Assigned Area"]
-    hindi_cols = {3}
     weights = [0.16, 0.19, 0.10, 0.20, 0.17, 0.18]
     col_widths = [int(total_w * w) for w in weights]
     col_widths[-1] = total_w - sum(col_widths[:-1])
@@ -395,7 +399,6 @@ def draw_land_table(draw, table_box, land_rows):
 
     font_header = get_font(True, font_size)
     font_cell = get_font(False, font_size)
-    font_hindi = get_hindi_font(font_size)
 
     cur_y = y0
 
@@ -419,8 +422,7 @@ def draw_land_table(draw, table_box, land_rows):
         for i, val in enumerate(values):
             cw = col_widths[i]
             draw.rectangle([cx, cur_y, cx + cw, cur_y + row_h], outline="#1A2238", width=1)
-            f = font_hindi if i in hindi_cols else font_cell
-            draw_text_in_box(draw, (cx, cur_y, cx + cw, cur_y + row_h), val, f)
+            draw_text_in_box(draw, (cx, cur_y, cx + cw, cur_y + row_h), val, font_cell)
             cx += cw
         cur_y += row_h
 
