@@ -13,7 +13,7 @@ app = Flask(__name__)
 CORS(app)
 
 # ============================================================
-# CONFIG
+# CONFIG — FRONT CARD (aapka pichla code, bilkul same rakha hai)
 # ============================================================
 FRONT_CARD_TEMPLATE_URL = "https://i.ibb.co/nFLxh2F/IMG-20260721-WA0005.jpg"
 AGRISTACK_URL = "https://www.upfr.agristack.gov.in/farmer-registry-up/"
@@ -27,30 +27,47 @@ FARMER_ID_BOX  = (518, 747, 1038, 897)
 CONTENT_X0 = 523
 CONTENT_X1 = 1140
 
-# ---- NEW: Name ko neeche shift karne aur rows ke beech gap kam karne ke liye ----
-NAME_ROW_TOP = 300       # pehle 255 tha — ab thoda neeche se shuru
+NAME_ROW_TOP = 300
 NAME_ROW_HEIGHT = 85
-ROW_GAP = 5              # rows ke beech tight gap
-LABEL_ROW_HEIGHT = 75    # DOB/Gender/Caste/Mobile — pehle ~98 tha, ab tight
+ROW_GAP = 5
+LABEL_ROW_HEIGHT = 75
 
-# ---- Photo padding (jaisa aapne set kiya tha, waisa hi rakha) ----
 PHOTO_PADDING_LEFT = 18
 PHOTO_PADDING_RIGHT = 18
 PHOTO_PADDING_TOP = 37
 PHOTO_PADDING_BOTTOM = 20
 
-# ---- QR: bahut thoda aur bada (padding aur kam kar diya) ----
-QR_PADDING = -7   # negative = box thoda aur bada, isliye QR bhi bada
+QR_PADDING = -7
 QR_SHIFT_X = 27
 QR_SHIFT_Y = 0
 
-# ---- Font sizes — bilkul same rakhe hain, kahin nahi badle ----
 NAME_FONT_SIZE = 55
 LABEL_FONT_SIZE = 37
 FARMER_ID_FONT_SIZE = 63
 
 FONT_REGULAR_PATH = "Poppins-Regular.ttf"
 FONT_BOLD_PATH = "Poppins-Bold.ttf"
+
+# ============================================================
+# CONFIG — BACK CARD (naya)
+# ============================================================
+BACK_CARD_TEMPLATE_URL = "back template url here"
+
+# Reference resolution jis par neeche ke coordinates measure kiye gaye hain
+BACK_TEMPLATE_W, BACK_TEMPLATE_H = 1537, 1023
+
+# Golden border ke andar wala poora usable content area
+BACK_CONTENT_BOX = (130, 110, 1407, 913)   # x0, y0, x1, y1
+
+ADDRESS_ROW_HEIGHT = 90
+ADDRESS_FONT_SIZE = 42
+
+TABLE_TOP_GAP = 30          # address ke neeche table shuru hone se pehle ka gap
+MAX_TABLE_ROW_HEIGHT = 85   # ek row ki max height (kam rows honge to isse zyada bada nahi hogi)
+MIN_TABLE_FONT = 20
+MAX_TABLE_FONT = 38
+
+FONT_HINDI_PATH = "NotoSansDevanagari-Regular.ttf"
 
 
 def get_font(bold, size):
@@ -64,16 +81,23 @@ def get_font(bold, size):
             return ImageFont.load_default()
 
 
+def get_hindi_font(size):
+    try:
+        return ImageFont.truetype(FONT_HINDI_PATH, size)
+    except Exception:
+        # Hindi font na mile to English font hi use ho jayega (Hindi text tab tofu/blank dikh sakta hai)
+        return get_font(False, size)
+
+
 # ============================================================
-# PDF SE DATA NIKALNA
+# PDF SE FRONT DATA NIKALNA (bilkul aapke pichle code jaisa)
 # ============================================================
 def format_dob(dob_str):
-    """dd/mm/yy -> dd/mm/yyyy (2-digit year ko sahi 4-digit year mein convert karta hai)."""
     if not dob_str:
         return dob_str
     m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})$", dob_str.strip())
     if not m:
-        return dob_str  # format expected se alag hai to as-is chhod do
+        return dob_str
 
     day, month, year = m.group(1), m.group(2), m.group(3)
     day = day.zfill(2)
@@ -82,8 +106,6 @@ def format_dob(dob_str):
     if len(year) == 2:
         yy = int(year)
         current_yy = int(str(datetime.now().year)[-2:])
-        # Agar 2-digit year current year ke 2-digit se bada hai -> purani sadi (19xx)
-        # warna current sadi (20xx)
         century = 1900 if yy > current_yy else 2000
         year = str(century + yy)
 
@@ -128,7 +150,67 @@ def extract_farmer_data(pdf_bytes):
 
 
 # ============================================================
-# IMAGE HELPERS
+# PDF SE BACK DATA NIKALNA (naya) — Address + Land Ownership Table
+# ============================================================
+def clean_cell(value):
+    """PDF table cell ke andar ke line-breaks ko space se replace karta hai aur trailing comma hata deta hai."""
+    if value is None:
+        return ""
+    v = value.replace("\n", " ")
+    v = re.sub(r"\s+", " ", v).strip()
+    v = v.rstrip(",").strip()
+    return v
+
+
+def extract_back_data(pdf_bytes):
+    address = "N/A"
+    land_rows = []
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        # ---- Address: page 1 ke text se ----
+        page0_text = pdf.pages[0].extract_text() or ""
+        m = re.search(r"Address In English\s+(.+?)\s+Address In Local Language", page0_text)
+        if m:
+            address = m.group(1).strip()
+
+        # ---- Land Ownership Table: doosre page par milti hai ----
+        for page in pdf.pages:
+            tables = page.extract_tables()
+            for table in tables:
+                if not table or len(table) < 2:
+                    continue
+                header = [clean_cell(c).lower() for c in table[0] if c is not None]
+                header_joined = " ".join(header)
+                if "owner" not in header_joined or "extent" not in header_joined:
+                    continue  # ye land ownership table nahi hai
+
+                for row in table[1:]:
+                    if not row or len(row) < 12:
+                        continue
+                    state = clean_cell(row[0])
+                    district = clean_cell(row[1])
+                    s_no_raw = clean_cell(row[4])
+                    s_no_match = re.match(r"(\d+)", s_no_raw)
+                    s_no = s_no_match.group(1) if s_no_match else s_no_raw
+                    owner = clean_cell(row[6])
+                    total_area = clean_cell(row[10])
+                    assigned_area = clean_cell(row[11])
+
+                    if state and owner:
+                        land_rows.append({
+                            "state": state,
+                            "district": district,
+                            "s_no": s_no,
+                            "owner": owner,
+                            "total_area": total_area,
+                            "assigned_area": assigned_area,
+                        })
+
+    return {"address": address, "land_rows": land_rows}
+
+
+# ============================================================
+# IMAGE HELPERS (front)
 # ============================================================
 def shrink_box_asym(box, left, top, right, bottom):
     x0, y0, x1, y1 = box
@@ -179,15 +261,20 @@ def draw_label_value(draw, box, label, value, label_size=90, value_gap=16):
     draw.text((x0 + label_w + value_gap, text_y), str(value), font=font_value, fill="#1A2238")
 
 
-def draw_centered_text(draw, box, text, size, bold=False, fill="#1A2238"):
+def draw_text_in_box(draw, box, text, font, fill="#1A2238"):
+    """Diya gaya font object seedha use karke box ke center mein text likhta hai."""
     x0, y0, x1, y1 = box
     box_w, box_h = x1 - x0, y1 - y0
-    font = get_font(bold, size)
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    tx = x0 + (box_w - tw) // 2
+    tx = x0 + max((box_w - tw) // 2, 4)
     ty = y0 + (box_h - th) // 2 - bbox[1]
     draw.text((tx, ty), text, font=font, fill=fill)
+
+
+def draw_centered_text(draw, box, text, size, bold=False, fill="#1A2238"):
+    font = get_font(bold, size)
+    draw_text_in_box(draw, box, text, font, fill=fill)
 
 
 def make_qr(data_url, size):
@@ -199,7 +286,6 @@ def make_qr(data_url, size):
 
 
 def build_content_rows():
-    """Name row neeche shift, aur baaki 4 rows tight gap ke saath ek ke baad ek."""
     name_row = (CONTENT_X0, NAME_ROW_TOP, CONTENT_X1, NAME_ROW_TOP + NAME_ROW_HEIGHT)
 
     dob_top = NAME_ROW_TOP + NAME_ROW_HEIGHT + ROW_GAP
@@ -218,7 +304,61 @@ def build_content_rows():
 
 
 # ============================================================
-# MAIN ENDPOINT
+# TABLE DRAWING (back card ke liye naya)
+# ============================================================
+def draw_land_table(draw, table_box, land_rows):
+    x0, y0, x1, y1 = table_box
+    total_w = x1 - x0
+    total_h = y1 - y0
+
+    headers = ["State", "District", "S. No.", "Owner Name", "Total Area", "Assigned Area"]
+    hindi_cols = {3}  # sirf "Owner Name" column Hindi font se likhega
+    weights = [0.16, 0.19, 0.10, 0.20, 0.17, 0.18]
+    col_widths = [int(total_w * w) for w in weights]
+    col_widths[-1] = total_w - sum(col_widths[:-1])  # rounding fix
+
+    n_rows = max(len(land_rows), 1)
+    row_h = min(MAX_TABLE_ROW_HEIGHT, total_h / (n_rows + 1))
+
+    font_size = int(row_h * 0.4)
+    font_size = max(MIN_TABLE_FONT, min(MAX_TABLE_FONT, font_size))
+
+    font_header = get_font(True, font_size)
+    font_cell = get_font(False, font_size)
+    font_hindi = get_hindi_font(font_size)
+
+    cur_y = y0
+
+    # ---- Header row ----
+    draw.rectangle([x0, cur_y, x1, cur_y + row_h], fill="#D9E6E3", outline="#1A2238", width=2)
+    cx = x0
+    for i, htext in enumerate(headers):
+        cw = col_widths[i]
+        draw.rectangle([cx, cur_y, cx + cw, cur_y + row_h], outline="#1A2238", width=1)
+        draw_text_in_box(draw, (cx, cur_y, cx + cw, cur_y + row_h), htext, font_header)
+        cx += cw
+    cur_y += row_h
+
+    # ---- Data rows (jitni bhi ho sakti hain, dynamically) ----
+    if not land_rows:
+        draw.rectangle([x0, cur_y, x1, cur_y + row_h], outline="#1A2238", width=1)
+        draw_text_in_box(draw, (x0, cur_y, x1, cur_y + row_h), "Koi land record nahi mila", font_cell)
+        return
+
+    for row in land_rows:
+        values = [row["state"], row["district"], row["s_no"], row["owner"], row["total_area"], row["assigned_area"]]
+        cx = x0
+        for i, val in enumerate(values):
+            cw = col_widths[i]
+            draw.rectangle([cx, cur_y, cx + cw, cur_y + row_h], outline="#1A2238", width=1)
+            f = font_hindi if i in hindi_cols else font_cell
+            draw_text_in_box(draw, (cx, cur_y, cx + cw, cur_y + row_h), val, f)
+            cx += cw
+        cur_y += row_h
+
+
+# ============================================================
+# FRONT CARD ENDPOINT (aapka pichla code, bilkul waisa hi)
 # ============================================================
 @app.route("/generate-card", methods=["POST"])
 def generate_card():
@@ -285,7 +425,6 @@ def generate_card():
     draw_label_value(draw, caste_row, "Caste  :", data["caste"], label_size=label_size)
     draw_label_value(draw, mobile_row, "Phone Number  :", data["mobile"], label_size=label_size)
 
-    # ---- Farmer ID: ab sirf number, "Farmer ID :" label hata diya, font size same rakha ----
     id_font_size = int(FARMER_ID_FONT_SIZE * scale_y)
     draw_centered_text(draw, farmer_id_box, farmer_id, size=id_font_size, bold=True)
 
@@ -300,6 +439,58 @@ def generate_card():
     template.save(output, format="PNG")
     output.seek(0)
     return send_file(output, mimetype="image/png", as_attachment=False, download_name="farmer-card-front.png")
+
+
+# ============================================================
+# BACK CARD ENDPOINT (naya)
+# ============================================================
+@app.route("/generate-card-back", methods=["POST"])
+def generate_card_back():
+    if "pdf" not in request.files:
+        return jsonify({"error": "PDF file zaroori hai (field name: pdf)"}), 400
+
+    pdf_file = request.files["pdf"]
+    pdf_bytes = pdf_file.read()
+
+    try:
+        data = extract_back_data(pdf_bytes)
+    except Exception as e:
+        return jsonify({"error": f"PDF read nahi ho payi: {str(e)}"}), 500
+
+    try:
+        resp = requests.get(BACK_CARD_TEMPLATE_URL, timeout=15)
+        template = Image.open(io.BytesIO(resp.content)).convert("RGB")
+    except Exception as e:
+        return jsonify({"error": f"Template load nahi hua: {str(e)}"}), 500
+
+    scale_x = template.width / BACK_TEMPLATE_W
+    scale_y = template.height / BACK_TEMPLATE_H
+
+    def scale_box(box):
+        x0, y0, x1, y1 = box
+        return (int(x0 * scale_x), int(y0 * scale_y), int(x1 * scale_x), int(y1 * scale_y))
+
+    content_box = scale_box(BACK_CONTENT_BOX)
+    cx0, cy0, cx1, cy1 = content_box
+
+    draw = ImageDraw.Draw(template)
+
+    # ---- Address heading ----
+    address_row = (cx0, cy0, cx1, cy0 + int(ADDRESS_ROW_HEIGHT * scale_y))
+    draw_label_value(
+        draw, address_row, "Address  :", data["address"],
+        label_size=int(ADDRESS_FONT_SIZE * scale_y)
+    )
+
+    # ---- Land Ownership Table (dynamic rows) ----
+    table_top = cy0 + int((ADDRESS_ROW_HEIGHT + TABLE_TOP_GAP) * scale_y)
+    table_box = (cx0, table_top, cx1, cy1)
+    draw_land_table(draw, table_box, data["land_rows"])
+
+    output = io.BytesIO()
+    template.save(output, format="PNG")
+    output.seek(0)
+    return send_file(output, mimetype="image/png", as_attachment=False, download_name="farmer-card-back.png")
 
 
 @app.route("/", methods=["GET"])
