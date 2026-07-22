@@ -32,7 +32,7 @@ CONTENT_BOTTOM = 745    # Farmer ID box shuru hone se just pehle tak
 # ---- Photo: upar ki taraf zyada badhao, neeche thoda sa ----
 PHOTO_PADDING_LEFT = 18
 PHOTO_PADDING_RIGHT = 18
-PHOTO_PADDING_TOP = 35     # bahut kam — photo upar tak badhega
+PHOTO_PADDING_TOP = 37     # bahut kam — photo upar tak badhega
 PHOTO_PADDING_BOTTOM = 20  # thoda kam — neeche bhi thoda badhega
 
 # ---- QR: aur bada + right shift ----
@@ -41,9 +41,9 @@ QR_SHIFT_X = 26   # right ki taraf shift
 QR_SHIFT_Y = 0
 
 # ---- Text sizes — available row-height ke hisab se max practical size ----
-NAME_FONT_SIZE = 75
-LABEL_FONT_SIZE = 60
-FARMER_ID_FONT_SIZE = 50
+NAME_FONT_SIZE = 55
+LABEL_FONT_SIZE = 35
+FARMER_ID_FONT_SIZE = 60
 
 FONT_REGULAR_PATH = "Poppins-Regular.ttf"
 FONT_BOLD_PATH = "Poppins-Bold.ttf"
