@@ -13,7 +13,7 @@ app = Flask(__name__)
 CORS(app)
 
 # ============================================================
-# CONFIG — FRONT CARD (aapka pichla code, bilkul same rakha hai)
+# CONFIG — FRONT CARD (bilkul same, koi change nahi)
 # ============================================================
 FRONT_CARD_TEMPLATE_URL = "https://i.ibb.co/nFLxh2F/IMG-20260721-WA0005.jpg"
 AGRISTACK_URL = "https://www.upfr.agristack.gov.in/farmer-registry-up/"
@@ -49,23 +49,24 @@ FONT_REGULAR_PATH = "Poppins-Regular.ttf"
 FONT_BOLD_PATH = "Poppins-Bold.ttf"
 
 # ============================================================
-# CONFIG — BACK CARD (naya)
+# CONFIG — BACK CARD
 # ============================================================
-BACK_CARD_TEMPLATE_URL = "https://i.ibb.co/6JTn2zHb/IMG-20260721-WA0003.jpg"
+BACK_CARD_TEMPLATE_URL = "back template url here"
 
-# Reference resolution jis par neeche ke coordinates measure kiye gaye hain
 BACK_TEMPLATE_W, BACK_TEMPLATE_H = 1537, 1023
 
-# Golden border ke andar wala poora usable content area
-BACK_CONTENT_BOX = (130, 110, 1407, 913)   # x0, y0, x1, y1
+BACK_CONTENT_BOX = (130, 110, 1407, 913)
 
 ADDRESS_ROW_HEIGHT = 90
 ADDRESS_FONT_SIZE = 42
 
-TABLE_TOP_GAP = 30          # address ke neeche table shuru hone se pehle ka gap
-MAX_TABLE_ROW_HEIGHT = 85   # ek row ki max height (kam rows honge to isse zyada bada nahi hogi)
-MIN_TABLE_FONT = 20
-MAX_TABLE_FONT = 38
+TABLE_TOP_GAP = 30
+MAX_TABLE_ROW_HEIGHT = 85
+
+# ---- NEW: table text ab kaafi chhota — overlap fix karne ke liye ----
+MIN_TABLE_FONT = 14
+MAX_TABLE_FONT = 22
+TABLE_FONT_RATIO = 0.24   # pehle 0.4 tha — row height ka kam fraction use hoga
 
 FONT_HINDI_PATH = "NotoSansDevanagari-Regular.ttf"
 
@@ -85,12 +86,11 @@ def get_hindi_font(size):
     try:
         return ImageFont.truetype(FONT_HINDI_PATH, size)
     except Exception:
-        # Hindi font na mile to English font hi use ho jayega (Hindi text tab tofu/blank dikh sakta hai)
         return get_font(False, size)
 
 
 # ============================================================
-# PDF SE FRONT DATA NIKALNA (bilkul aapke pichle code jaisa)
+# PDF SE FRONT DATA NIKALNA
 # ============================================================
 def format_dob(dob_str):
     if not dob_str:
@@ -150,10 +150,9 @@ def extract_farmer_data(pdf_bytes):
 
 
 # ============================================================
-# PDF SE BACK DATA NIKALNA (naya) — Address + Land Ownership Table
+# PDF SE BACK DATA NIKALNA
 # ============================================================
 def clean_cell(value):
-    """PDF table cell ke andar ke line-breaks ko space se replace karta hai aur trailing comma hata deta hai."""
     if value is None:
         return ""
     v = value.replace("\n", " ")
@@ -167,13 +166,11 @@ def extract_back_data(pdf_bytes):
     land_rows = []
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        # ---- Address: page 1 ke text se ----
         page0_text = pdf.pages[0].extract_text() or ""
         m = re.search(r"Address In English\s+(.+?)\s+Address In Local Language", page0_text)
         if m:
             address = m.group(1).strip()
 
-        # ---- Land Ownership Table: doosre page par milti hai ----
         for page in pdf.pages:
             tables = page.extract_tables()
             for table in tables:
@@ -182,7 +179,7 @@ def extract_back_data(pdf_bytes):
                 header = [clean_cell(c).lower() for c in table[0] if c is not None]
                 header_joined = " ".join(header)
                 if "owner" not in header_joined or "extent" not in header_joined:
-                    continue  # ye land ownership table nahi hai
+                    continue
 
                 for row in table[1:]:
                     if not row or len(row) < 12:
@@ -210,7 +207,7 @@ def extract_back_data(pdf_bytes):
 
 
 # ============================================================
-# IMAGE HELPERS (front)
+# IMAGE HELPERS
 # ============================================================
 def shrink_box_asym(box, left, top, right, bottom):
     x0, y0, x1, y1 = box
@@ -262,7 +259,6 @@ def draw_label_value(draw, box, label, value, label_size=90, value_gap=16):
 
 
 def draw_text_in_box(draw, box, text, font, fill="#1A2238"):
-    """Diya gaya font object seedha use karke box ke center mein text likhta hai."""
     x0, y0, x1, y1 = box
     box_w, box_h = x1 - x0, y1 - y0
     bbox = draw.textbbox((0, 0), text, font=font)
@@ -304,7 +300,7 @@ def build_content_rows():
 
 
 # ============================================================
-# TABLE DRAWING (back card ke liye naya)
+# TABLE DRAWING (back card)
 # ============================================================
 def draw_land_table(draw, table_box, land_rows):
     x0, y0, x1, y1 = table_box
@@ -312,15 +308,16 @@ def draw_land_table(draw, table_box, land_rows):
     total_h = y1 - y0
 
     headers = ["State", "District", "S. No.", "Owner Name", "Total Area", "Assigned Area"]
-    hindi_cols = {3}  # sirf "Owner Name" column Hindi font se likhega
+    hindi_cols = {3}
     weights = [0.16, 0.19, 0.10, 0.20, 0.17, 0.18]
     col_widths = [int(total_w * w) for w in weights]
-    col_widths[-1] = total_w - sum(col_widths[:-1])  # rounding fix
+    col_widths[-1] = total_w - sum(col_widths[:-1])
 
     n_rows = max(len(land_rows), 1)
     row_h = min(MAX_TABLE_ROW_HEIGHT, total_h / (n_rows + 1))
 
-    font_size = int(row_h * 0.4)
+    # ---- FIX: chhota font, taaki State/District jaisa lamba text column ke andar hi fit ho ----
+    font_size = int(row_h * TABLE_FONT_RATIO)
     font_size = max(MIN_TABLE_FONT, min(MAX_TABLE_FONT, font_size))
 
     font_header = get_font(True, font_size)
@@ -329,7 +326,6 @@ def draw_land_table(draw, table_box, land_rows):
 
     cur_y = y0
 
-    # ---- Header row ----
     draw.rectangle([x0, cur_y, x1, cur_y + row_h], fill="#D9E6E3", outline="#1A2238", width=2)
     cx = x0
     for i, htext in enumerate(headers):
@@ -339,7 +335,6 @@ def draw_land_table(draw, table_box, land_rows):
         cx += cw
     cur_y += row_h
 
-    # ---- Data rows (jitni bhi ho sakti hain, dynamically) ----
     if not land_rows:
         draw.rectangle([x0, cur_y, x1, cur_y + row_h], outline="#1A2238", width=1)
         draw_text_in_box(draw, (x0, cur_y, x1, cur_y + row_h), "Koi land record nahi mila", font_cell)
@@ -358,7 +353,7 @@ def draw_land_table(draw, table_box, land_rows):
 
 
 # ============================================================
-# FRONT CARD ENDPOINT (aapka pichla code, bilkul waisa hi)
+# FRONT CARD ENDPOINT
 # ============================================================
 @app.route("/generate-card", methods=["POST"])
 def generate_card():
@@ -442,7 +437,7 @@ def generate_card():
 
 
 # ============================================================
-# BACK CARD ENDPOINT (naya)
+# BACK CARD ENDPOINT
 # ============================================================
 @app.route("/generate-card-back", methods=["POST"])
 def generate_card_back():
@@ -475,14 +470,12 @@ def generate_card_back():
 
     draw = ImageDraw.Draw(template)
 
-    # ---- Address heading ----
     address_row = (cx0, cy0, cx1, cy0 + int(ADDRESS_ROW_HEIGHT * scale_y))
     draw_label_value(
         draw, address_row, "Address  :", data["address"],
         label_size=int(ADDRESS_FONT_SIZE * scale_y)
     )
 
-    # ---- Land Ownership Table (dynamic rows) ----
     table_top = cy0 + int((ADDRESS_ROW_HEIGHT + TABLE_TOP_GAP) * scale_y)
     table_box = (cx0, table_top, cx1, cy1)
     draw_land_table(draw, table_box, data["land_rows"])
