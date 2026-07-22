@@ -32,8 +32,8 @@ CONTENT_BOTTOM = 745    # Farmer ID box shuru hone se just pehle tak
 # ---- Photo: upar ki taraf zyada badhao, neeche thoda sa ----
 PHOTO_PADDING_LEFT = 18
 PHOTO_PADDING_RIGHT = 18
-PHOTO_PADDING_TOP = 10     # bahut kam — photo upar tak badhega
-PHOTO_PADDING_BOTTOM = 12  # thoda kam — neeche bhi thoda badhega
+PHOTO_PADDING_TOP = 20     # bahut kam — photo upar tak badhega
+PHOTO_PADDING_BOTTOM = 18  # thoda kam — neeche bhi thoda badhega
 
 # ---- QR: aur bada + right shift ----
 QR_PADDING = 2
@@ -43,10 +43,10 @@ QR_SHIFT_Y = 0
 # ---- Text sizes — available row-height ke hisab se max practical size ----
 NAME_FONT_SIZE = 95
 LABEL_FONT_SIZE = 90
-FARMER_ID_FONT_SIZE = 80
+FARMER_ID_FONT_SIZE = 30
 
-FONT_REGULAR_PATH = "fonts/Poppins-Regular.ttf"
-FONT_BOLD_PATH = "fonts/Poppins-Bold.ttf"
+FONT_REGULAR_PATH = "Poppins-Regular.ttf"
+FONT_BOLD_PATH = "Poppins-Bold.ttf"
 
 
 def get_font(bold, size):
