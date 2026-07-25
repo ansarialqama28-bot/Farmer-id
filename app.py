@@ -32,6 +32,9 @@ NAME_ROW_HEIGHT = 85
 ROW_GAP = 5
 LABEL_ROW_HEIGHT = 75
 
+# ---- NEW: jab Aadhaar row add hoti hai, gap tight ho jaata hai taaki total height same rahe ----
+AADHAAR_ROW_GAP = 3
+
 PHOTO_PADDING_LEFT = 18
 PHOTO_PADDING_RIGHT = 18
 PHOTO_PADDING_TOP = 37
@@ -57,7 +60,6 @@ BACK_TEMPLATE_W, BACK_TEMPLATE_H = 1537, 1023
 
 BACK_CONTENT_BOX = (70, 110, 1467, 913)
 
-# ---- NEW: Address ke liye alag left padding, taaki border se door rahe (table isse touch nahi hota) ----
 ADDRESS_LEFT_PADDING = 60
 
 ADDRESS_ROW_HEIGHT = 90
@@ -65,7 +67,6 @@ ADDRESS_FONT_SIZE = 42
 
 TABLE_TOP_GAP = 30
 
-# ---- NEW: table text thoda chhota — overlap fix karne ke liye ----
 MIN_TABLE_FONT = 17
 MAX_TABLE_FONT = 27
 ROW_PADDING_RATIO = 1.9
@@ -83,7 +84,7 @@ def get_font(bold, size):
 
 
 # ============================================================
-# KNOWN NAME LOOKUPS — State/District ko sahi shakal mein wapas laane ke liye
+# KNOWN NAME LOOKUPS
 # ============================================================
 INDIAN_STATES = [
     "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -151,7 +152,7 @@ def clean_and_match(value, lookup):
 
 
 # ============================================================
-# PDF SE ENGLISH FARMER NAME NIKALNA (front aur back dono isi ko use karte hain)
+# PDF SE ENGLISH FARMER NAME NIKALNA
 # ============================================================
 def extract_english_name(pdf_bytes):
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
@@ -356,22 +357,39 @@ def make_qr(data_url, size):
     return img.resize((size, size), Image.LANCZOS)
 
 
-def build_content_rows():
+# ============================================================
+# CONTENT ROWS BUILDER — Aadhaar optional
+# ============================================================
+def build_content_rows(has_aadhaar):
+    """
+    Jab Aadhaar nahi hai (has_aadhaar=False), ye function ganit ke hisaab se
+    EXACT wahi coordinates deta hai jo pehle (Aadhaar feature aane se pehle) the —
+    isliye blank case mein output bilkul same rehta hai.
+
+    Jab Aadhaar hai, total available height wahi rakhi jaati hai, bas gap aur
+    row-height thoda compress ho jaate hain taaki 1 extra row (Aadhaar) fit ho jaye.
+    """
+    # Fixed total budget — jaisa original 5-row (bina Aadhaar) layout mein tha
+    total_budget = NAME_ROW_HEIGHT + 4 * LABEL_ROW_HEIGHT + 4 * ROW_GAP  # = 405
+
+    n_label_rows = 5 if has_aadhaar else 4
+    gap = AADHAAR_ROW_GAP if has_aadhaar else ROW_GAP
+
+    remaining = total_budget - NAME_ROW_HEIGHT
+    label_h = (remaining - n_label_rows * gap) / n_label_rows
+
     name_row = (CONTENT_X0, NAME_ROW_TOP, CONTENT_X1, NAME_ROW_TOP + NAME_ROW_HEIGHT)
 
-    dob_top = NAME_ROW_TOP + NAME_ROW_HEIGHT + ROW_GAP
-    dob_row = (CONTENT_X0, dob_top, CONTENT_X1, dob_top + LABEL_ROW_HEIGHT)
+    rows = [name_row]
+    cursor = NAME_ROW_TOP + NAME_ROW_HEIGHT
 
-    gender_top = dob_top + LABEL_ROW_HEIGHT + ROW_GAP
-    gender_row = (CONTENT_X0, gender_top, CONTENT_X1, gender_top + LABEL_ROW_HEIGHT)
+    for _ in range(n_label_rows):
+        top = cursor + gap
+        bottom = top + label_h
+        rows.append((CONTENT_X0, top, CONTENT_X1, bottom))
+        cursor = bottom
 
-    caste_top = gender_top + LABEL_ROW_HEIGHT + ROW_GAP
-    caste_row = (CONTENT_X0, caste_top, CONTENT_X1, caste_top + LABEL_ROW_HEIGHT)
-
-    mobile_top = caste_top + LABEL_ROW_HEIGHT + ROW_GAP
-    mobile_row = (CONTENT_X0, mobile_top, CONTENT_X1, mobile_top + LABEL_ROW_HEIGHT)
-
-    return name_row, dob_row, gender_row, caste_row, mobile_row
+    return rows  # [name, dob, gender, caste, (aadhaar), mobile]
 
 
 # ============================================================
@@ -440,6 +458,10 @@ def generate_card():
     if not re.fullmatch(r"\d{11}", farmer_id):
         return jsonify({"error": "Farmer ID must be exactly 11 digits"}), 400
 
+    # ---- NEW: Aadhaar number, optional ----
+    aadhaar_number = request.form.get("aadhaar_number", "").strip()
+    has_aadhaar = bool(aadhaar_number)
+
     pdf_file = request.files["pdf"]
     pdf_bytes = pdf_file.read()
 
@@ -479,7 +501,14 @@ def generate_card():
     qr_padding_scaled = int(QR_PADDING * scale_x)
     qr_box = shrink_box_asym(qr_box, qr_padding_scaled, qr_padding_scaled, qr_padding_scaled, qr_padding_scaled)
 
-    name_row, dob_row, gender_row, caste_row, mobile_row = [scale_box(r) for r in build_content_rows()]
+    # ---- Content rows: 5 rows (no aadhaar) ya 6 rows (with aadhaar) ----
+    raw_rows = build_content_rows(has_aadhaar)
+    scaled_rows = [scale_box(r) for r in raw_rows]
+
+    if has_aadhaar:
+        name_row, dob_row, gender_row, caste_row, aadhaar_row, mobile_row = scaled_rows
+    else:
+        name_row, dob_row, gender_row, caste_row, mobile_row = scaled_rows
 
     pw, ph = photo_box[2] - photo_box[0], photo_box[3] - photo_box[1]
     fitted_photo = cover_fit(data["photo"], pw, ph)
@@ -494,6 +523,10 @@ def generate_card():
     draw_label_value(draw, dob_row, "Date Of Birth  :", data["dob"], label_size=label_size)
     draw_label_value(draw, gender_row, "Gender  :", data["gender"], label_size=label_size)
     draw_label_value(draw, caste_row, "Caste  :", data["caste"], label_size=label_size)
+
+    if has_aadhaar:
+        draw_label_value(draw, aadhaar_row, "Aadhaar Number  :", aadhaar_number, label_size=label_size)
+
     draw_label_value(draw, mobile_row, "Phone Number  :", data["mobile"], label_size=label_size)
 
     id_font_size = int(FARMER_ID_FONT_SIZE * scale_y)
@@ -546,7 +579,6 @@ def generate_card_back():
 
     draw = ImageDraw.Draw(template)
 
-    # ---- Address: table se alag, apna khud ka left-padding use karta hai ----
     address_x0 = cx0 + int(ADDRESS_LEFT_PADDING * scale_x)
     address_row = (address_x0, cy0, cx1, cy0 + int(ADDRESS_ROW_HEIGHT * scale_y))
     draw_label_value(
@@ -554,7 +586,6 @@ def generate_card_back():
         label_size=int(ADDRESS_FONT_SIZE * scale_y)
     )
 
-    # ---- Table: bilkul waisa hi, border ke paas hi rahega ----
     table_top = cy0 + int((ADDRESS_ROW_HEIGHT + TABLE_TOP_GAP) * scale_y)
     table_box = (cx0, table_top, cx1, cy1)
     draw_land_table(draw, table_box, data["land_rows"])
