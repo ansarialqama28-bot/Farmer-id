@@ -32,7 +32,6 @@ NAME_ROW_HEIGHT = 85
 ROW_GAP = 5
 LABEL_ROW_HEIGHT = 75
 
-# ---- NEW: jab Aadhaar row add hoti hai, gap tight ho jaata hai taaki total height same rahe ----
 AADHAAR_ROW_GAP = 3
 
 PHOTO_PADDING_LEFT = 18
@@ -151,6 +150,15 @@ def clean_and_match(value, lookup):
     return fallback
 
 
+def row_looks_like_land_row(row):
+    """Table jab bina header ke continuation ke roop mein aati hai, tab
+    row[0] ko 'State' se match karke pehchanta hai ki ye genuinely land-data row hai."""
+    if not row or len(row) < 12:
+        return False
+    key = re.sub(r"\s+", "", (row[0] or "")).upper()
+    return key in STATE_LOOKUP
+
+
 # ============================================================
 # PDF SE ENGLISH FARMER NAME NIKALNA
 # ============================================================
@@ -228,7 +236,7 @@ def extract_farmer_data(pdf_bytes):
 
 
 # ============================================================
-# PDF SE BACK DATA NIKALNA
+# PDF SE BACK DATA NIKALNA — ab poora PDF scan hota hai
 # ============================================================
 def extract_back_data(pdf_bytes):
     address = "N/A"
@@ -243,18 +251,25 @@ def extract_back_data(pdf_bytes):
         if m:
             address = m.group(1).strip()
 
+        # ---- Poore PDF ke har page ko scan karta hai, sirf ek page nahi ----
         for page in pdf.pages:
             tables = page.extract_tables()
             for table in tables:
-                if not table or len(table) < 2:
-                    continue
-                header = [clean_nospace(c).lower() for c in table[0] if c is not None]
-                header_joined = " ".join(header)
-                if "owner" not in header_joined or "extent" not in header_joined:
+                if not table:
                     continue
 
-                for row in table[1:]:
-                    if not row or len(row) < 12:
+                header = [clean_nospace(c).lower() for c in table[0] if c is not None]
+                header_joined = " ".join(header)
+                is_header_table = ("owner" in header_joined) and ("extent" in header_joined)
+
+                # Agar table mein sahi header mila, to header row skip karke baaki rows lo.
+                # Agar header nahi mila (jaise ye pichle page ki table ka continuation hai
+                # jisme header repeat nahi hua), to poori table ke rows try karo —
+                # row_looks_like_land_row() genuinely land-data rows filter kar lega.
+                candidate_rows = table[1:] if is_header_table else table
+
+                for row in candidate_rows:
+                    if not row_looks_like_land_row(row):
                         continue
 
                     state = clean_and_match(row[0], STATE_LOOKUP)
@@ -269,15 +284,14 @@ def extract_back_data(pdf_bytes):
                     total_area = clean_nospace(row[10])
                     assigned_area = clean_nospace(row[11])
 
-                    if state:
-                        land_rows.append({
-                            "state": state,
-                            "district": district,
-                            "s_no": s_no,
-                            "owner": owner,
-                            "total_area": total_area,
-                            "assigned_area": assigned_area,
-                        })
+                    land_rows.append({
+                        "state": state,
+                        "district": district,
+                        "s_no": s_no,
+                        "owner": owner,
+                        "total_area": total_area,
+                        "assigned_area": assigned_area,
+                    })
 
     return {"address": address, "land_rows": land_rows}
 
@@ -361,16 +375,7 @@ def make_qr(data_url, size):
 # CONTENT ROWS BUILDER — Aadhaar optional
 # ============================================================
 def build_content_rows(has_aadhaar):
-    """
-    Jab Aadhaar nahi hai (has_aadhaar=False), ye function ganit ke hisaab se
-    EXACT wahi coordinates deta hai jo pehle (Aadhaar feature aane se pehle) the —
-    isliye blank case mein output bilkul same rehta hai.
-
-    Jab Aadhaar hai, total available height wahi rakhi jaati hai, bas gap aur
-    row-height thoda compress ho jaate hain taaki 1 extra row (Aadhaar) fit ho jaye.
-    """
-    # Fixed total budget — jaisa original 5-row (bina Aadhaar) layout mein tha
-    total_budget = NAME_ROW_HEIGHT + 4 * LABEL_ROW_HEIGHT + 4 * ROW_GAP  # = 405
+    total_budget = NAME_ROW_HEIGHT + 4 * LABEL_ROW_HEIGHT + 4 * ROW_GAP
 
     n_label_rows = 5 if has_aadhaar else 4
     gap = AADHAAR_ROW_GAP if has_aadhaar else ROW_GAP
@@ -389,7 +394,7 @@ def build_content_rows(has_aadhaar):
         rows.append((CONTENT_X0, top, CONTENT_X1, bottom))
         cursor = bottom
 
-    return rows  # [name, dob, gender, caste, (aadhaar), mobile]
+    return rows
 
 
 # ============================================================
@@ -458,7 +463,6 @@ def generate_card():
     if not re.fullmatch(r"\d{11}", farmer_id):
         return jsonify({"error": "Farmer ID must be exactly 11 digits"}), 400
 
-    # ---- NEW: Aadhaar number, optional ----
     aadhaar_number = request.form.get("aadhaar_number", "").strip()
     has_aadhaar = bool(aadhaar_number)
 
@@ -501,7 +505,6 @@ def generate_card():
     qr_padding_scaled = int(QR_PADDING * scale_x)
     qr_box = shrink_box_asym(qr_box, qr_padding_scaled, qr_padding_scaled, qr_padding_scaled, qr_padding_scaled)
 
-    # ---- Content rows: 5 rows (no aadhaar) ya 6 rows (with aadhaar) ----
     raw_rows = build_content_rows(has_aadhaar)
     scaled_rows = [scale_box(r) for r in raw_rows]
 
