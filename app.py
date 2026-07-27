@@ -53,7 +53,7 @@ FONT_BOLD_PATH = "Poppins-Bold.ttf"
 # ============================================================
 # CONFIG — BACK CARD
 # ============================================================
-BACK_CARD_TEMPLATE_URL = "https://i.ibb.co/mrWdkzbH/20260727-154905.jpg"
+BACK_CARD_TEMPLATE_URL = "https://i.ibb.co/Q7VQkx3P/Chat-GPT-Image-Jul-21-2026-02-28-42-PM.png"
 
 BACK_TEMPLATE_W, BACK_TEMPLATE_H = 1537, 1023
 
