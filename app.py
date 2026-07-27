@@ -13,9 +13,9 @@ app = Flask(__name__)
 CORS(app)
 
 # ============================================================
-# CONFIG — FRONT CARD
+# CONFIG — FRONT CARD (unchanged)
 # ============================================================
-FRONT_CARD_TEMPLATE_URL = "https://i.ibb.co/V6vxpJB/20260727-154752.jpg"
+FRONT_CARD_TEMPLATE_URL = "https://i.ibb.co/nFLxh2F/IMG-20260721-WA0005.jpg"
 AGRISTACK_URL = "https://www.upfr.agristack.gov.in/farmer-registry-up/"
 
 TEMPLATE_W, TEMPLATE_H = 1559, 1009
@@ -53,7 +53,7 @@ FONT_BOLD_PATH = "Poppins-Bold.ttf"
 # ============================================================
 # CONFIG — BACK CARD
 # ============================================================
-BACK_CARD_TEMPLATE_URL = "https://i.ibb.co/mrWdkzbH/20260727-154905.jpg"
+BACK_CARD_TEMPLATE_URL = "https://i.ibb.co/Q7VQkx3P/Chat-GPT-Image-Jul-21-2026-02-28-42-PM.png"
 
 BACK_TEMPLATE_W, BACK_TEMPLATE_H = 1537, 1023
 
@@ -69,22 +69,6 @@ TABLE_TOP_GAP = 30
 MIN_TABLE_FONT = 17
 MAX_TABLE_FONT = 27
 ROW_PADDING_RATIO = 1.9
-
-# ============================================================
-# CONFIG — PRINT-READY A4 SHEET
-# Ayushman page ke jaisa hi fixed pixel-math layout, 300 DPI, portrait A4
-# ============================================================
-A4_CANVAS_W = 2480   # A4 @ 300 DPI, portrait width
-A4_CANVAS_H = 3508   # A4 @ 300 DPI, portrait height
-
-CARD_W = 1016        # Standard CR80 card width @ 300 DPI (86mm)
-CARD_H = 638         # Standard CR80 card height @ 300 DPI (54mm)
-
-PRINT_SCALE = 1.10   # Card ko thoda bada karke print karna (jaisa Ayushman page mein hai)
-
-START_Y = 150        # Upar se margin
-GAP_X = 100           # Front aur Back card ke beech ka gap
-GAP_Y = 120           # (agar future mein multiple rows chahiye ho, abhi ek hi row hai)
 
 
 def get_font(bold, size):
@@ -167,6 +151,8 @@ def clean_and_match(value, lookup):
 
 
 def row_looks_like_land_row(row):
+    """Table jab bina header ke continuation ke roop mein aati hai, tab
+    row[0] ko 'State' se match karke pehchanta hai ki ye genuinely land-data row hai."""
     if not row or len(row) < 12:
         return False
     key = re.sub(r"\s+", "", (row[0] or "")).upper()
@@ -250,7 +236,7 @@ def extract_farmer_data(pdf_bytes):
 
 
 # ============================================================
-# PDF SE BACK DATA NIKALNA — poora PDF scan
+# PDF SE BACK DATA NIKALNA — ab poora PDF scan hota hai
 # ============================================================
 def extract_back_data(pdf_bytes):
     address = "N/A"
@@ -265,6 +251,7 @@ def extract_back_data(pdf_bytes):
         if m:
             address = m.group(1).strip()
 
+        # ---- Poore PDF ke har page ko scan karta hai, sirf ek page nahi ----
         for page in pdf.pages:
             tables = page.extract_tables()
             for table in tables:
@@ -275,6 +262,10 @@ def extract_back_data(pdf_bytes):
                 header_joined = " ".join(header)
                 is_header_table = ("owner" in header_joined) and ("extent" in header_joined)
 
+                # Agar table mein sahi header mila, to header row skip karke baaki rows lo.
+                # Agar header nahi mila (jaise ye pichle page ki table ka continuation hai
+                # jisme header repeat nahi hua), to poori table ke rows try karo —
+                # row_looks_like_land_row() genuinely land-data rows filter kar lega.
                 candidate_rows = table[1:] if is_header_table else table
 
                 for row in candidate_rows:
@@ -380,6 +371,9 @@ def make_qr(data_url, size):
     return img.resize((size, size), Image.LANCZOS)
 
 
+# ============================================================
+# CONTENT ROWS BUILDER — Aadhaar optional
+# ============================================================
 def build_content_rows(has_aadhaar):
     total_budget = NAME_ROW_HEIGHT + 4 * LABEL_ROW_HEIGHT + 4 * ROW_GAP
 
@@ -403,6 +397,9 @@ def build_content_rows(has_aadhaar):
     return rows
 
 
+# ============================================================
+# TABLE DRAWING (back card)
+# ============================================================
 def draw_land_table(draw, table_box, land_rows):
     x0, y0, x1, y1 = table_box
     total_w = x1 - x0
@@ -455,17 +452,36 @@ def draw_land_table(draw, table_box, land_rows):
 
 
 # ============================================================
-# CORE BUILDERS
+# FRONT CARD ENDPOINT
 # ============================================================
-def build_front_card_image(pdf_bytes, farmer_id, aadhaar_number):
-    data = extract_farmer_data(pdf_bytes)
-    if data["photo"] is None:
-        raise ValueError("No photo found in the PDF")
+@app.route("/generate-card", methods=["POST"])
+def generate_card():
+    if "pdf" not in request.files:
+        return jsonify({"error": "PDF file is required (field name: pdf)"}), 400
 
+    farmer_id = request.form.get("farmer_id", "").strip()
+    if not re.fullmatch(r"\d{11}", farmer_id):
+        return jsonify({"error": "Farmer ID must be exactly 11 digits"}), 400
+
+    aadhaar_number = request.form.get("aadhaar_number", "").strip()
     has_aadhaar = bool(aadhaar_number)
 
-    resp = requests.get(FRONT_CARD_TEMPLATE_URL, timeout=15)
-    template = Image.open(io.BytesIO(resp.content)).convert("RGB")
+    pdf_file = request.files["pdf"]
+    pdf_bytes = pdf_file.read()
+
+    try:
+        data = extract_farmer_data(pdf_bytes)
+    except Exception as e:
+        return jsonify({"error": f"Could not read the PDF: {str(e)}"}), 500
+
+    if data["photo"] is None:
+        return jsonify({"error": "No photo found in the PDF"}), 400
+
+    try:
+        resp = requests.get(FRONT_CARD_TEMPLATE_URL, timeout=15)
+        template = Image.open(io.BytesIO(resp.content)).convert("RGB")
+    except Exception as e:
+        return jsonify({"error": f"Could not load the template: {str(e)}"}), 500
 
     scale_x = template.width / TEMPLATE_W
     scale_y = template.height / TEMPLATE_H
@@ -526,14 +542,33 @@ def build_front_card_image(pdf_bytes, farmer_id, aadhaar_number):
     qy = qr_box[1] + (qbh - qr_size) // 2 + int(QR_SHIFT_Y * scale_y)
     template.paste(qr_img, (qx, qy))
 
-    return template
+    output = io.BytesIO()
+    template.save(output, format="PNG")
+    output.seek(0)
+    return send_file(output, mimetype="image/png", as_attachment=False, download_name="farmer-card-front.png")
 
 
-def build_back_card_image(pdf_bytes):
-    data = extract_back_data(pdf_bytes)
+# ============================================================
+# BACK CARD ENDPOINT
+# ============================================================
+@app.route("/generate-card-back", methods=["POST"])
+def generate_card_back():
+    if "pdf" not in request.files:
+        return jsonify({"error": "PDF file is required (field name: pdf)"}), 400
 
-    resp = requests.get(BACK_CARD_TEMPLATE_URL, timeout=15)
-    template = Image.open(io.BytesIO(resp.content)).convert("RGB")
+    pdf_file = request.files["pdf"]
+    pdf_bytes = pdf_file.read()
+
+    try:
+        data = extract_back_data(pdf_bytes)
+    except Exception as e:
+        return jsonify({"error": f"Could not read the PDF: {str(e)}"}), 500
+
+    try:
+        resp = requests.get(BACK_CARD_TEMPLATE_URL, timeout=15)
+        template = Image.open(io.BytesIO(resp.content)).convert("RGB")
+    except Exception as e:
+        return jsonify({"error": f"Could not load the template: {str(e)}"}), 500
 
     scale_x = template.width / BACK_TEMPLATE_W
     scale_y = template.height / BACK_TEMPLATE_H
@@ -558,131 +593,10 @@ def build_back_card_image(pdf_bytes):
     table_box = (cx0, table_top, cx1, cy1)
     draw_land_table(draw, table_box, data["land_rows"])
 
-    return template
-
-
-# ============================================================
-# PRINT-READY A4 SHEET — Ayushman page ke jaisa hi fixed math
-# ============================================================
-def build_print_pdf(front_img, back_img):
-    canvas = Image.new("RGB", (A4_CANVAS_W, A4_CANVAS_H), "white")
-
-    print_w = CARD_W * PRINT_SCALE
-    print_h = CARD_H * PRINT_SCALE
-
-    # Auto-center logic — bilkul Ayushman page jaisa
-    total_content_width = (print_w * 2) + GAP_X
-    left_col_x = (A4_CANVAS_W - total_content_width) / 2
-    right_col_x = left_col_x + print_w + GAP_X
-
-    current_y = START_Y
-
-    front_resized = front_img.resize((int(print_w), int(print_h)), Image.LANCZOS)
-    back_resized = back_img.resize((int(print_w), int(print_h)), Image.LANCZOS)
-
-    canvas.paste(front_resized, (int(left_col_x), int(current_y)))
-    canvas.paste(back_resized, (int(right_col_x), int(current_y)))
-
-    draw = ImageDraw.Draw(canvas)
-    draw.rectangle(
-        [left_col_x, current_y, left_col_x + print_w, current_y + print_h],
-        outline="#999999", width=2
-    )
-    draw.rectangle(
-        [right_col_x, current_y, right_col_x + print_w, current_y + print_h],
-        outline="#999999", width=2
-    )
-
-    return canvas
-
-
-# ============================================================
-# FRONT CARD ENDPOINT
-# ============================================================
-@app.route("/generate-card", methods=["POST"])
-def generate_card():
-    if "pdf" not in request.files:
-        return jsonify({"error": "PDF file is required (field name: pdf)"}), 400
-
-    farmer_id = request.form.get("farmer_id", "").strip()
-    if not re.fullmatch(r"\d{11}", farmer_id):
-        return jsonify({"error": "Farmer ID must be exactly 11 digits"}), 400
-
-    aadhaar_number = request.form.get("aadhaar_number", "").strip()
-
-    pdf_file = request.files["pdf"]
-    pdf_bytes = pdf_file.read()
-
-    try:
-        template = build_front_card_image(pdf_bytes, farmer_id, aadhaar_number)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": f"Could not generate the card: {str(e)}"}), 500
-
-    output = io.BytesIO()
-    template.save(output, format="PNG")
-    output.seek(0)
-    return send_file(output, mimetype="image/png", as_attachment=False, download_name="farmer-card-front.png")
-
-
-# ============================================================
-# BACK CARD ENDPOINT
-# ============================================================
-@app.route("/generate-card-back", methods=["POST"])
-def generate_card_back():
-    if "pdf" not in request.files:
-        return jsonify({"error": "PDF file is required (field name: pdf)"}), 400
-
-    pdf_file = request.files["pdf"]
-    pdf_bytes = pdf_file.read()
-
-    try:
-        template = build_back_card_image(pdf_bytes)
-    except Exception as e:
-        return jsonify({"error": f"Could not generate the card: {str(e)}"}), 500
-
     output = io.BytesIO()
     template.save(output, format="PNG")
     output.seek(0)
     return send_file(output, mimetype="image/png", as_attachment=False, download_name="farmer-card-back.png")
-
-
-# ============================================================
-# PRINT-READY A4 PDF ENDPOINT
-# ============================================================
-@app.route("/generate-print-pdf", methods=["POST"])
-def generate_print_pdf():
-    if "pdf" not in request.files:
-        return jsonify({"error": "PDF file is required (field name: pdf)"}), 400
-
-    farmer_id = request.form.get("farmer_id", "").strip()
-    if not re.fullmatch(r"\d{11}", farmer_id):
-        return jsonify({"error": "Farmer ID must be exactly 11 digits"}), 400
-
-    aadhaar_number = request.form.get("aadhaar_number", "").strip()
-
-    pdf_file = request.files["pdf"]
-    pdf_bytes = pdf_file.read()
-
-    try:
-        front_img = build_front_card_image(pdf_bytes, farmer_id, aadhaar_number)
-        back_img = build_back_card_image(pdf_bytes)
-        page = build_print_pdf(front_img, back_img)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": f"Could not generate the print PDF: {str(e)}"}), 500
-
-    output = io.BytesIO()
-    page.save(output, format="PDF", resolution=300)
-    output.seek(0)
-    return send_file(
-        output,
-        mimetype="application/pdf",
-        as_attachment=False,
-        download_name="farmer-id-card-print.pdf"
-    )
 
 
 @app.route("/", methods=["GET"])
