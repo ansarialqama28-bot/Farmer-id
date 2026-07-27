@@ -15,7 +15,7 @@ CORS(app)
 # ============================================================
 # CONFIG — FRONT CARD (unchanged)
 # ============================================================
-FRONT_CARD_TEMPLATE_URL = "https://i.ibb.co/V6vxpJB/20260727-154752.jpg"
+FRONT_CARD_TEMPLATE_URL = "https://i.ibb.co/nFLxh2F/IMG-20260721-WA0005.jpg"
 AGRISTACK_URL = "https://www.upfr.agristack.gov.in/farmer-registry-up/"
 
 TEMPLATE_W, TEMPLATE_H = 1559, 1009
@@ -36,10 +36,10 @@ AADHAAR_ROW_GAP = 3
 
 PHOTO_PADDING_LEFT = 18
 PHOTO_PADDING_RIGHT = 18
-PHOTO_PADDING_TOP = 44
-PHOTO_PADDING_BOTTOM = 23
+PHOTO_PADDING_TOP = 37
+PHOTO_PADDING_BOTTOM = 20
 
-QR_PADDING = -15
+QR_PADDING = -7
 QR_SHIFT_X = 27
 QR_SHIFT_Y = 0
 
