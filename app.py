@@ -71,19 +71,20 @@ MAX_TABLE_FONT = 27
 ROW_PADDING_RATIO = 1.9
 
 # ============================================================
-# CONFIG — PRINT-READY A4 PDF (naya)
+# CONFIG — PRINT-READY A4 SHEET
+# Ayushman page ke jaisa hi fixed pixel-math layout, 300 DPI, portrait A4
 # ============================================================
-PRINT_DPI = 300
-MM_TO_PX = PRINT_DPI / 25.4
+A4_CANVAS_W = 2480   # A4 @ 300 DPI, portrait width
+A4_CANVAS_H = 3508   # A4 @ 300 DPI, portrait height
 
-A4_WIDTH_MM = 297    # landscape
-A4_HEIGHT_MM = 210
+CARD_W = 1016        # Standard CR80 card width @ 300 DPI (86mm)
+CARD_H = 638         # Standard CR80 card height @ 300 DPI (54mm)
 
-CARD_WIDTH_MM = 86
-CARD_HEIGHT_MM = 54
+PRINT_SCALE = 1.10   # Card ko thoda bada karke print karna (jaisa Ayushman page mein hai)
 
-PRINT_MARGIN_LEFT_MM = 20   # A4 ke left edge se Front card tak
-PRINT_GAP_MM = 20           # Front aur Back card ke beech ka gap
+START_Y = 150        # Upar se margin
+GAP_X = 100           # Front aur Back card ke beech ka gap
+GAP_Y = 120           # (agar future mein multiple rows chahiye ho, abhi ek hi row hai)
 
 
 def get_font(bold, size):
@@ -454,7 +455,7 @@ def draw_land_table(draw, table_box, land_rows):
 
 
 # ============================================================
-# CORE BUILDERS — reusable Image objects (front/back/print sab isi ko use karte hain)
+# CORE BUILDERS
 # ============================================================
 def build_front_card_image(pdf_bytes, farmer_id, aadhaar_number):
     data = extract_farmer_data(pdf_bytes)
@@ -561,44 +562,38 @@ def build_back_card_image(pdf_bytes):
 
 
 # ============================================================
-# PRINT-READY A4 PDF BUILDER — Front left, Back right
+# PRINT-READY A4 SHEET — Ayushman page ke jaisa hi fixed math
 # ============================================================
 def build_print_pdf(front_img, back_img):
-    a4_w_px = round(A4_WIDTH_MM * MM_TO_PX)
-    a4_h_px = round(A4_HEIGHT_MM * MM_TO_PX)
+    canvas = Image.new("RGB", (A4_CANVAS_W, A4_CANVAS_H), "white")
 
-    card_w_px = round(CARD_WIDTH_MM * MM_TO_PX)
-    card_h_px = round(CARD_HEIGHT_MM * MM_TO_PX)
+    print_w = CARD_W * PRINT_SCALE
+    print_h = CARD_H * PRINT_SCALE
 
-    margin_left_px = round(PRINT_MARGIN_LEFT_MM * MM_TO_PX)
-    gap_px = round(PRINT_GAP_MM * MM_TO_PX)
+    # Auto-center logic — bilkul Ayushman page jaisa
+    total_content_width = (print_w * 2) + GAP_X
+    left_col_x = (A4_CANVAS_W - total_content_width) / 2
+    right_col_x = left_col_x + print_w + GAP_X
 
-    page = Image.new("RGB", (a4_w_px, a4_h_px), "white")
+    current_y = START_Y
 
-    front_resized = front_img.resize((card_w_px, card_h_px), Image.LANCZOS)
-    back_resized = back_img.resize((card_w_px, card_h_px), Image.LANCZOS)
+    front_resized = front_img.resize((int(print_w), int(print_h)), Image.LANCZOS)
+    back_resized = back_img.resize((int(print_w), int(print_h)), Image.LANCZOS)
 
-    front_x = margin_left_px
-    front_y = (a4_h_px - card_h_px) // 2
+    canvas.paste(front_resized, (int(left_col_x), int(current_y)))
+    canvas.paste(back_resized, (int(right_col_x), int(current_y)))
 
-    back_x = front_x + card_w_px + gap_px
-    back_y = front_y
-
-    page.paste(front_resized, (front_x, front_y))
-    page.paste(back_resized, (back_x, back_y))
-
-    # Halki si cutting-guide border, cards ke around
-    draw = ImageDraw.Draw(page)
+    draw = ImageDraw.Draw(canvas)
     draw.rectangle(
-        [front_x - 1, front_y - 1, front_x + card_w_px + 1, front_y + card_h_px + 1],
-        outline="#BBBBBB", width=2
+        [left_col_x, current_y, left_col_x + print_w, current_y + print_h],
+        outline="#999999", width=2
     )
     draw.rectangle(
-        [back_x - 1, back_y - 1, back_x + card_w_px + 1, back_y + card_h_px + 1],
-        outline="#BBBBBB", width=2
+        [right_col_x, current_y, right_col_x + print_w, current_y + print_h],
+        outline="#999999", width=2
     )
 
-    return page
+    return canvas
 
 
 # ============================================================
@@ -654,7 +649,7 @@ def generate_card_back():
 
 
 # ============================================================
-# PRINT-READY A4 PDF ENDPOINT (naya)
+# PRINT-READY A4 PDF ENDPOINT
 # ============================================================
 @app.route("/generate-print-pdf", methods=["POST"])
 def generate_print_pdf():
@@ -680,7 +675,7 @@ def generate_print_pdf():
         return jsonify({"error": f"Could not generate the print PDF: {str(e)}"}), 500
 
     output = io.BytesIO()
-    page.save(output, format="PDF", resolution=PRINT_DPI)
+    page.save(output, format="PDF", resolution=300)
     output.seek(0)
     return send_file(
         output,
