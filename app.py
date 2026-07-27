@@ -15,7 +15,7 @@ CORS(app)
 # ============================================================
 # CONFIG — FRONT CARD (unchanged)
 # ============================================================
-FRONT_CARD_TEMPLATE_URL = "https://i.ibb.co/nFLxh2F/IMG-20260721-WA0005.jpg"
+FRONT_CARD_TEMPLATE_URL = "https://i.ibb.co/V6vxpJB/20260727-154752.jpg"
 AGRISTACK_URL = "https://www.upfr.agristack.gov.in/farmer-registry-up/"
 
 TEMPLATE_W, TEMPLATE_H = 1559, 1009
