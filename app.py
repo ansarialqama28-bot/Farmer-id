@@ -81,7 +81,7 @@ CARD_H = 638         # Standard CR80 card height @ 300 DPI (54mm)
 
 PRINT_SCALE = 1.00   # Card ko thoda bada karke print karna
 
-START_Y = 100        # Upar se margin
+START_Y = 60        # Upar se margin
 
 # ---- FIX: gap kaafi kam kar diya, reference image ke jaisa tight spacing ----
 GAP_X = 30            # Front aur Back card ke beech ka gap
