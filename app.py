@@ -79,12 +79,12 @@ A4_CANVAS_H = 3508   # A4 @ 300 DPI, portrait height
 CARD_W = 1016        # Standard CR80 card width @ 300 DPI (86mm)
 CARD_H = 638         # Standard CR80 card height @ 300 DPI (54mm)
 
-PRINT_SCALE = 1.10   # Card ko thoda bada karke print karna
+PRINT_SCALE = 1.00   # Card ko thoda bada karke print karna
 
-START_Y = 150        # Upar se margin
+START_Y = 100        # Upar se margin
 
 # ---- FIX: gap kaafi kam kar diya, reference image ke jaisa tight spacing ----
-GAP_X = 40            # Front aur Back card ke beech ka gap
+GAP_X = 30            # Front aur Back card ke beech ka gap
 GAP_Y = 120           # (multiple rows future ke liye)
 
 
