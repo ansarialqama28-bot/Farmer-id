@@ -66,9 +66,10 @@ ADDRESS_FONT_SIZE = 42
 
 TABLE_TOP_GAP = 30
 
-MIN_TABLE_FONT = 17
-MAX_TABLE_FONT = 27
-ROW_PADDING_RATIO = 1.9
+# ---- FIX: table text bahut chhota tha card ke size ke hisaab se — ab bada kar diya ----
+MIN_TABLE_FONT = 28
+MAX_TABLE_FONT = 56
+ROW_PADDING_RATIO = 2.0
 
 # ============================================================
 # CONFIG — PRINT-READY A4 SHEET
@@ -83,7 +84,6 @@ PRINT_SCALE = 1.00   # Card ko thoda bada karke print karna
 
 START_Y = 60        # Upar se margin
 
-# ---- FIX: gap kaafi kam kar diya, reference image ke jaisa tight spacing ----
 GAP_X = 30            # Front aur Back card ke beech ka gap
 GAP_Y = 120           # (multiple rows future ke liye)
 
