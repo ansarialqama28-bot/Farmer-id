@@ -175,12 +175,92 @@ def row_looks_like_land_row(row):
 
 
 # ============================================================
+# FALLBACK: RAW/UNFORMATTED TEXT SE LAND TABLE NIKALNA
+# (Jab PDF mein proper grid/table nahi hoti, sirf jumbled
+#  continuous text hoti hai jaise iss CHHOTELAL.pdf mein)
+# ============================================================
+def find_wrapped_name(names, blob, max_gap=250):
+    """
+    PDF text-extraction mein multi-word naam (jaise 'Uttar Pradesh')
+    kabhi kabhi 2 alag lines mein toot jaata hai — pehla word upar,
+    doosra word neeche (column-wrap ki wajah se). Ye function poore
+    blob mein pehla aur aakhri word dhoondh kar match karta hai,
+    chahe beech mein kitna bhi (dusra) text kyun na ho.
+    """
+    if not blob:
+        return None
+    for name in names:
+        words = name.upper().split()
+        if len(words) == 1:
+            if re.search(r"\b" + re.escape(words[0]) + r"\b", blob, re.IGNORECASE):
+                return name.upper()
+        else:
+            pattern = (
+                r"\b" + re.escape(words[0]) + r"\b"
+                + r".{0," + str(max_gap) + r"}?"
+                + r"\b" + re.escape(words[-1]) + r"\b"
+            )
+            if re.search(pattern, blob, re.IGNORECASE | re.DOTALL):
+                return name.upper()
+    return None
+
+
+def extract_land_rows_from_raw_text(full_text, owner_first_name):
+    """
+    Jab extract_tables() ko koi proper table nahi milta (unformatted
+    PDF), tab ye function poore text mein se khud Land Ownership
+    Details section dhoondh kar, State/District ke known naamon aur
+    Village+S.No+S/S No ke number-pattern ke aas-paas se saari
+    details nikaal leta hai.
+    """
+    rows = []
+
+    start = full_text.find("Land Ownership Details")
+    if start == -1:
+        return rows
+    end = full_text.find("Annexure", start)
+    if end == -1:
+        end = start + 3000  # safety cap agar "Annexure" na mile
+    section = full_text[start:end]
+
+    # Har land-row ka "anchor" — Village name ke saath juda S.No,
+    # uske turant baad S/S no (13-20 digit ka lamba number).
+    # Example: "Imamuddinpur279 1674090279000012"
+    anchor_re = re.compile(r"([A-Za-z]+)(\d{1,4})\s*(\d{10,20})")
+    matches = list(anchor_re.finditer(section))
+
+    for idx, m in enumerate(matches):
+        win_start = matches[idx - 1].end() if idx > 0 else 0
+        win_end = matches[idx + 1].start() if idx + 1 < len(matches) else len(section)
+        window = section[win_start:win_end]
+        after_text = section[m.end():win_end]
+
+        state = find_wrapped_name(INDIAN_STATES, window) or "N/A"
+        district = find_wrapped_name(UP_DISTRICTS, window) or "N/A"
+
+        areas = re.findall(r"(\d+\.\d{4,6})", after_text)
+        total_area = areas[0] if len(areas) > 0 else "N/A"
+        assigned_area = areas[1] if len(areas) > 1 else (areas[0] if areas else "N/A")
+
+        rows.append({
+            "state": state,
+            "district": district,
+            "s_no": m.group(2),
+            "owner": owner_first_name,
+            "total_area": total_area,
+            "assigned_area": assigned_area,
+        })
+
+    return rows
+
+
+# ============================================================
 # PDF SE ENGLISH FARMER NAME NIKALNA
 # ============================================================
 def extract_english_name(pdf_bytes):
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         text = pdf.pages[0].extract_text() or ""
-        m = re.search(r"Farmer Name as per Aadhaar in English\s+(.+?)\s+Farmer.s Name in Local Language", text)
+        m = re.search(r"Farmer Name as per Aadhaar in English\s*(.+?)\s*Farmer.s Name in Local Language", text)
         return m.group(1).strip() if m else "N/A"
 
 
@@ -222,11 +302,11 @@ def extract_farmer_data(pdf_bytes):
             m = re.search(pattern, text)
             return m.group(1).strip() if m else default
 
-        name = find(r"Farmer Name as per Aadhaar in English\s+(.+?)\s+Farmer.s Name in Local Language")
-        dob = find(r"Date of Birth\s+([\d/]+)")
-        gender = find(r"Gender\s+(Male|Female|Transgender)")
-        caste = find(r"Caste Category\s+([A-Za-z]+)")
-        mobile = find(r"Mobile Number\s+(\d{6,15})")
+        name = find(r"Farmer Name as per Aadhaar in English\s*(.+?)\s*Farmer.s Name in Local Language")
+        dob = find(r"Date of Birth\s*([\d/]+)")
+        gender = find(r"Gender\s*(Male|Female|Transgender)")
+        caste = find(r"Caste Category\s*([A-Za-z]+)")
+        mobile = find(r"Mobile Number\s*(\d{6,15})")
 
         dob = format_dob(dob)
 
@@ -260,13 +340,16 @@ def extract_back_data(pdf_bytes):
     english_name = extract_english_name(pdf_bytes)
     owner_first_name = get_first_name(english_name)
 
+    full_text = ""
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         page0_text = pdf.pages[0].extract_text() or ""
-        m = re.search(r"Address In English\s+(.+?)\s+Address In Local Language", page0_text)
+        m = re.search(r"Address In English\s*(.+?)\s*Address In Local Language", page0_text)
         if m:
             address = m.group(1).strip()
 
         for page in pdf.pages:
+            full_text += (page.extract_text() or "") + "\n"
+
             tables = page.extract_tables()
             for table in tables:
                 if not table:
@@ -302,6 +385,12 @@ def extract_back_data(pdf_bytes):
                         "total_area": total_area,
                         "assigned_area": assigned_area,
                     })
+
+    # FALLBACK: agar upar wale proper-table wale tareeke se koi row
+    # nahi mila (jaise is unformatted/jumbled PDF mein), to poore
+    # raw text ko scan karke khud row nikaal lo.
+    if not land_rows:
+        land_rows = extract_land_rows_from_raw_text(full_text, owner_first_name)
 
     return {"address": address, "land_rows": land_rows}
 
