@@ -177,7 +177,8 @@ def row_looks_like_land_row(row):
 # ============================================================
 # FALLBACK: RAW/UNFORMATTED TEXT SE LAND TABLE NIKALNA
 # (Jab PDF mein proper grid/table nahi hoti, sirf jumbled
-#  continuous text hoti hai jaise iss CHHOTELAL.pdf mein)
+#  continuous text hoti hai — kisi bhi format mein data ho,
+#  yahan se nikal ke card par table ban jayegi)
 # ============================================================
 def find_wrapped_name(names, blob, max_gap=250):
     """
@@ -211,7 +212,9 @@ def extract_land_rows_from_raw_text(full_text, owner_first_name):
     PDF), tab ye function poore text mein se khud Land Ownership
     Details section dhoondh kar, State/District ke known naamon aur
     Village+S.No+S/S No ke number-pattern ke aas-paas se saari
-    details nikaal leta hai.
+    details nikaal leta hai — chahe Village aur S.No ke beech space
+    ho ("Garhwal 382") ya na ho ("Imamuddinpur279"), dono format
+    handle karta hai. Multiple land rows bhi sahi se pakadta hai.
     """
     rows = []
 
@@ -220,13 +223,15 @@ def extract_land_rows_from_raw_text(full_text, owner_first_name):
         return rows
     end = full_text.find("Annexure", start)
     if end == -1:
-        end = start + 3000  # safety cap agar "Annexure" na mile
+        end = start + 5000  # safety cap agar "Annexure" na mile
     section = full_text[start:end]
 
     # Har land-row ka "anchor" — Village name ke saath juda S.No,
     # uske turant baad S/S no (13-20 digit ka lamba number).
-    # Example: "Imamuddinpur279 1674090279000012"
-    anchor_re = re.compile(r"([A-Za-z]+)(\d{1,4})\s*(\d{10,20})")
+    # Kabhi space ke saath ("Garhwal 382"), kabhi bina space ke
+    # ("Imamuddinpur279") — dono format handle karna hai isliye
+    # village aur S.No ke beech \s* (optional space) rakha hai.
+    anchor_re = re.compile(r"([A-Za-z]+)\s*(\d{1,4})\s*(\d{10,20})")
     matches = list(anchor_re.finditer(section))
 
     for idx, m in enumerate(matches):
@@ -387,8 +392,8 @@ def extract_back_data(pdf_bytes):
                     })
 
     # FALLBACK: agar upar wale proper-table wale tareeke se koi row
-    # nahi mila (jaise is unformatted/jumbled PDF mein), to poore
-    # raw text ko scan karke khud row nikaal lo.
+    # nahi mila (jaise unformatted PDF mein), to poore raw text ko
+    # scan karke khud row nikaal lo — chahe kisi bhi format mein ho.
     if not land_rows:
         land_rows = extract_land_rows_from_raw_text(full_text, owner_first_name)
 
